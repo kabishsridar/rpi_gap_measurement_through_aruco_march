@@ -6,8 +6,8 @@ import time
 
 # --- 1. SETTINGS & LOAD CALIBRATION ---
 # Path used on the RPi
-CALIB_FILE = "/home/kabish/rpi_gap_measurement_through_aruco_march/calibration_checkerboard/camera_params.npz"
-MARKER_SIZE_CM = 10.0  
+CALIB_FILE = "/home/kabish/rpi_gap_measurement_through_aruco_march/calibration/camera_params.npz"
+MARKER_SIZE_CM = 5.0  
 
 if not os.path.exists(CALIB_FILE):
     # Local fallback for testing

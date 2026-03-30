@@ -5,8 +5,8 @@ import sys
 
 # --- 1. SETTINGS & LOAD CALIBRATION ---
 # Load your Raspberry Pi calibration file
-CALIB_FILE = "camera_params.npz"
-MARKER_SIZE_CM = 10.0  # Physical size of your marker in CM
+CALIB_FILE = "/home/kabish/rpi_gap_measurement_through_aruco_march/calibration/camera_params.npz"
+MARKER_SIZE_CM = 5.0  # Physical size of your marker in CM
 ARUCO_DICT = cv.aruco.DICT_5X5_250
 
 if not os.path.exists(CALIB_FILE):
