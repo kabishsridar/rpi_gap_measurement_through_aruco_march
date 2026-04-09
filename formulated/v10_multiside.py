@@ -94,26 +94,35 @@ class MeasurementApp:
             corners, ids, _ = detector.detectMarkers(cv.cvtColor(frame, cv.COLOR_BGR2GRAY))
             curr = time.time() * 1000
 
-            if ids is not None and len(ids) >= 2:
-                m_data = [] # Reorder each marker's corners to match Camera Frame [TL, TR, BR, BL]
+            if ids is not None and len(ids) >= 1:
+                # Reorder each marker's corners to Camera Frame [TL, TR, BR, BL]
+                m_data = []
                 for i in range(len(ids)):
                     c = corners[i][0]
                     idx_x = np.argsort(c[:, 0]); lp = c[idx_x[:2]]; rp = c[idx_x[2:]]
-                    tl = lp[np.argmin(lp[:, 1])]; bl = lp[np.argmax(lp[:,1])]
-                    tr = rp[np.argmin(rp[:, 1])]; br = rp[np.argmax(rp[:,1])]
-                    m_data.append({"c": np.array([tl, tr, br, bl], dtype=np.float32), "y": (tl[1]+tr[1]+br[1]+bl[1])/4, "x": (tl[0]+tr[0]+br[0]+bl[0])/4})
+                    tl = lp[np.argmin(lp[:, 1])]; bl = lp[np.argmax(lp[:, 1])]
+                    tr = rp[np.argmin(rp[:, 1])]; br = rp[np.argmax(rp[:, 1])]
+                    cy = (tl[1]+tr[1]+br[1]+bl[1])/4.0
+                    cx = (tl[0]+tr[0]+br[0]+bl[0])/4.0
+                    m_data.append({"c": np.array([tl, tr, br, bl], dtype=np.float32), "y": cy, "x": cx})
 
-                m_data.sort(key=lambda m: m["y"]) # Horizontal Pairing: top-most 2 are current Top Pair
-                top_m, bot_m = m_data[:2], m_data[2:] if len(m_data) >= 4 else []
-                if len(m_data) < 4: 
-                    avg_y = np.mean([m["y"] for m in m_data])
-                    if avg_y < 360: top_m, bot_m = m_data, []
-                    else: top_m, bot_m = [], m_data
+                # --- STRICT PER-MARKER Y CLASSIFICATION against screen midline ---
+                # Each marker is independently assigned: y < 360 => top zone, y >= 360 => bottom zone
+                top_m = [m for m in m_data if m["y"] < RESOLUTION[1] / 2]
+                bot_m = [m for m in m_data if m["y"] >= RESOLUTION[1] / 2]
 
                 def proc(marker_list, key, size):
-                    if len(marker_list) < 2: self.last_data[key]["dist"] = 0.0; return
-                    marker_list.sort(key=lambda m: m["x"]) # Sort Left-to-Right
+                    # Need exactly 2 markers per pair - clear if broken
+                    if len(marker_list) < 2:
+                        self.last_data[key]["dist"] = 0.0
+                        self.last_data[key]["p1_px"] = None  # clear pixel draw points
+                        return
+                    # Pick the two horizontally-closest opposite markers (leftmost and rightmost)
+                    marker_list.sort(key=lambda m: m["x"])
+                    left_m, right_m = marker_list[0], marker_list[-1]  # Always use outermost pair
                     is_rf = (self.fixed_side.get() == "Right")
+                    S_m = right_m if is_rf else left_m   # Fixed = Source
+                    T_m = left_m  if is_rf else right_m  # Moving = Target
 
                     def get_full(c2d):
                         h = size / 2.0; obj = np.array([[-h, h, 0], [h, h, 0], [h, -h, 0], [-h, -h, 0]], dtype=np.float32)
@@ -122,11 +131,23 @@ class MeasurementApp:
                         dy, dx = c2d[1, 1]-c2d[0, 1], c2d[1, 0]-c2d[0, 0]
                         return pts3d, math.degrees(math.atan2(dy, dx)), math.degrees(math.atan2(R[1,0], R[0,0])), math.degrees(math.atan2(R[2,1], R[2,2]))
 
-                    S_pts, S_rot, S_rl, S_tl = get_full(marker_list[1 if is_rf else 0]["c"])
-                    T_pts, T_rot, T_rl, T_tl = get_full(marker_list[0 if is_rf else 1]["c"])
+                    S_pts, S_rot, S_rl, S_tl = get_full(S_m["c"])
+                    T_pts, T_rot, T_rl, T_tl = get_full(T_m["c"])
+
+                    # Inner edge of Source (facing the gap)
+                    # Left-fixed: source=left marker, inner edge = its RIGHT side (c[1]=TR, c[2]=BR)
+                    # Right-fixed: source=right marker, inner edge = its LEFT side (c[0]=TL, c[3]=BL)
                     trl, brl = (S_pts[1], S_pts[2]) if not is_rf else (S_pts[0], S_pts[3])
-                    trr, brr = (T_pts[1], T_pts[2]) if is_rf else (T_pts[0], T_pts[3])
-                    buffers[key].append({"A":(trl+brl)/2, "X_alt":(trr+brr)/2, "TR":trl, "BR":brl, "B":trr, "C":brr, "L_A":(S_rl, S_tl), "R_A":(T_rl, T_tl), "rot": max(abs(S_rot), abs(T_rot))})
+                    # Inner edge of Target - 2D pixel coords for drawing
+                    # Left-fixed: target=right marker, inner edge = its LEFT side (c[0]=TL, c[3]=BL)
+                    # Right-fixed: target=left marker, inner edge = its RIGHT side (c[1]=TR, c[2]=BR)
+                    trr, brr = (T_pts[0], T_pts[3]) if not is_rf else (T_pts[1], T_pts[2])
+                    # 2D pixel inner edges for screen line drawing
+                    p_src_2d = tuple(((S_m["c"][1]+S_m["c"][2])/2).astype(int)) if not is_rf else tuple(((S_m["c"][0]+S_m["c"][3])/2).astype(int))
+                    p_tgt_2d = tuple(((T_m["c"][0]+T_m["c"][3])/2).astype(int)) if not is_rf else tuple(((T_m["c"][1]+T_m["c"][2])/2).astype(int))
+                    buffers[key].append({"A":(trl+brl)/2, "X_alt":(trr+brr)/2, "TR":trl, "BR":brl, "B":trr, "C":brr,
+                                         "L_A":(S_rl, S_tl), "R_A":(T_rl, T_tl), "rot": max(abs(S_rot), abs(T_rot)),
+                                         "p1_px": p_src_2d, "p2_px": p_tgt_2d})
 
                 if (curr - l_s) >= 100: proc(top_m, "top", self.size_top.get()); proc(bot_m, "bottom", self.size_bot.get()); l_s = curr
 
@@ -135,23 +156,30 @@ class MeasurementApp:
                         if buffers[k]:
                             s = buffers[k]; aA, aTR, aBR, aX_alt, aB, aC = [np.mean([x[j] for x in s], axis=0) for j in ["A", "TR", "BR", "X_alt", "B", "C"]]
                             aL, aR = [np.mean([x[j] for x in s], axis=0) for j in ["L_A", "R_A"]]; avg_rot = np.mean([x["rot"] for x in s])
+                            # Pixel draw points: average of last buffer samples
+                            p1_px = tuple(np.mean([x["p1_px"] for x in s], axis=0).astype(int))
+                            p2_px = tuple(np.mean([x["p2_px"] for x in s], axis=0).astype(int))
                             if avg_rot > self.rot_threshold.get(): aX, dv, kv = aX_alt, np.linalg.norm(aX_alt - aA), 0.5
                             else:
                                 v = (aTR-aA)/np.linalg.norm(aTR-aA) if np.linalg.norm(aTR-aA)>0 else np.zeros(3); w, u = aC-aB, aB-aA
                                 den = (np.dot(v,v)*np.dot(w,w))-(np.dot(v,w)**2)
                                 if abs(den)>1e-6: kv = ((np.dot(v,w)*np.dot(u,v))-(np.dot(v,v)*np.dot(u,w)))/den; aX=aB+kv*w; dv=np.linalg.norm(aX-aA)
                                 else: aX=aB; dv=0.0; kv=0.0
-                            self.last_data[k].update({"A":aA, "X":aX, "TR":aTR, "BR":aBR, "B":aB, "C":aC, "dist":dv, "k":kv, "rot_2d":avg_rot, "L_A":aL, "R_A":aR})
+                            self.last_data[k].update({"A":aA, "X":aX, "TR":aTR, "BR":aBR, "B":aB, "C":aC, "dist":dv, "k":kv, "rot_2d":avg_rot, "L_A":aL, "R_A":aR, "p1_px":p1_px, "p2_px":p2_px})
                             self.last_data["session_count"] += 1; buffers[k].clear()
                     l_u = curr
-            else: self.last_data["top"]["dist"] = self.last_data["bottom"]["dist"] = 0.0
+            else:
+                self.last_data["top"]["dist"] = 0.0
+                self.last_data["bottom"]["dist"] = 0.0
 
             for k, color in [("top", (0, 165, 255)), ("bottom", (255, 0, 255))]:
                 d = self.last_data[k]
-                if d["dist"] > 0:
-                    pd, _ = cv.projectPoints(np.array([d["A"], d["X"]]), np.zeros(3), np.zeros(3), K, dist)
-                    p1, p2 = tuple(pd[0].ravel().astype(int)), tuple(pd[1].ravel().astype(int))
-                    cv.line(frame, p1, p2, color, 3); cv.circle(frame, p2, 6, (0, 255, 0), -1)
+                # Only draw if valid pair was detected and pixel coords exist
+                if d["dist"] > 0 and d.get("p1_px") is not None and d.get("p2_px") is not None:
+                    p1, p2 = d["p1_px"], d["p2_px"]
+                    cv.line(frame, p1, p2, color, 3)
+                    cv.circle(frame, p2, 6, (0, 255, 0), -1)
+                    cv.putText(frame, f"{k.upper()}: {d['dist']:.2f}mm", (p1[0], p1[1]-12), 0, 0.6, color, 2)
                     if not (160.0 <= d["L_A"][1] <= 200.0):
                         cv.rectangle(frame, (p1[0]-80, p1[1]-85), (p1[0]+50, p1[1]-50), (0,0,255), -1)
                         cv.putText(frame, f"TILT: {d['L_A'][1]:.1f}", (p1[0]-75, p1[1]-65), 0, 0.5, (0,255,255), 2)
