@@ -18,7 +18,7 @@ CALIB_FILE = "camera_params.npz"
 class MeasurementApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Advanced Dual-Pair ArUco Measurement Dashboard v8")
+        self.root.title("Dual-Pair ArUco Measurement Dashboard v8")
         self.root.geometry("1500x950")
         self.root.configure(bg="#2c3e50")
 
@@ -92,7 +92,7 @@ class MeasurementApp:
                 f.pack(fill="x", padx=10, pady=4)
                 tk.Label(f, text=var, font=("Helvetica", 9, "bold"), bg="white", fg="#7f8c8d").pack(side="left", padx=5)
                 v = tk.StringVar(value="0.000, 0.000, 0.000")
-                tk.Label(f, textvariable=v, font=("Courier", 10), bg="white").pack(side="right", padx=5)
+                tk.Label(f, textvariable=v, font=("Courier", 11), bg="white").pack(side="right", padx=5)
                 self.tele_vars[key][var] = v
 
         # TAB 3: SETTINGS
@@ -144,7 +144,11 @@ class MeasurementApp:
                 bot_m = [m for m in marker_data if m["y"] >= RESOLUTION[1]/2]
 
                 def process_pair(marker_list, key, size_mm):
-                    if len(marker_list) < 2: return
+                    # --- FIX: Ensure 2 markers exist for this specific pair ---
+                    if len(marker_list) < 2: 
+                        self.last_data[key]["dist"] = 0.0 # Clear distance immediately
+                        return
+                    
                     marker_list.sort(key=lambda m: np.mean(m["corners"], axis=0)[0])
                     
                     def solve_p(c_pts):
@@ -181,8 +185,7 @@ class MeasurementApp:
                             if is_rot:
                                 aX = (aTRR + aBRR) / 2
                                 dist_v = np.linalg.norm(aX - aA)
-                                k_v = 0.5
-                                v_vec, w_vec, u_vec = np.zeros(3), np.zeros(3), np.zeros(3)
+                                k_v = 0.5; v_vec, w_vec, u_vec = np.zeros(3), np.zeros(3), np.zeros(3)
                             else:
                                 v_vec = (aTR-aTL)/np.linalg.norm(aTR-aTL); w_vec, u_vec = aC-aB, aB-aA
                                 den = (np.dot(v_vec,v_vec)*np.dot(w_vec,w_vec))-(np.dot(v_vec,w_vec)**2)
@@ -197,7 +200,9 @@ class MeasurementApp:
                             log.record(dist_v, k_v, aA, aX, aTR, aBR, aB, aC, u_vec, v_vec, w_vec, aL, aR)
                             buffers[key].clear()
                     l_update = curr
-            else: self.last_data["top"]["dist"] = self.last_data["bottom"]["dist"] = 0.0
+            else: 
+                # --- FIX: If no IDs exist, clear both pairs ---
+                self.last_data["top"]["dist"] = self.last_data["bottom"]["dist"] = 0.0
 
             # --- VIDEO VISUALIZATION ---
             for key, color in [("top", (0, 165, 255)), ("bottom", (255, 0, 255))]:
@@ -208,7 +213,6 @@ class MeasurementApp:
                     cv.line(frame, p1, p2, color, 3); cv.circle(frame, p2, 6, (0, 255, 0), -1)
                     cv.putText(frame, f"{key.upper()}: {d['dist']:.2f}mm", (p1[0], p1[1]-10), 0, 0.6, color, 2)
                     
-                    # TILT WARNING
                     if abs(d["L_Ang"][1]) > 5.0:
                         bx, by = p1[0]-80, p1[1]-60
                         cv.rectangle(frame, (bx, by-25), (bx+130, by+10), (0,0,255), -1)
