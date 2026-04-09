@@ -141,8 +141,9 @@ class MeasurementApp:
                     p_disp, _ = cv.projectPoints(np.array([d_val["A"], d_val["X"]]), np.zeros(3), np.zeros(3), K, dist)
                     p1, p2 = tuple(p_disp[0].ravel().astype(int)), tuple(p_disp[1].ravel().astype(int))
                     cv.line(frame, p1, p2, color, 3); cv.circle(frame, p2, 6, (0, 255, 0), -1); cv.putText(frame, f"{key.upper()}: {d_val['dist']:.2f}mm", (p1[0], p1[1]-10), 0, 0.6, color, 2)
-                    if abs(d_val["L_Ang"][1]) > 5.0:
-                        bx, by = p1[0]-80, p1[1]-60; cv.rectangle(frame, (bx, by-25), (bx+130, by+10), (0,0,255), -1); cv.putText(frame, f"REF TILT: {d_val['L_Ang'][1]:.2f}", (bx+5, by), 0, 0.6, (0,255,255), 2)
+                    current_tilt = d_val["L_Ang"][1]
+                    if not (160.0 <= current_tilt <= 200.0):
+                        bx, by = p1[0]-80, p1[1]-60; cv.rectangle(frame, (bx, by-25), (bx+130, by+10), (0,0,255), -1); cv.putText(frame, f"REF TILT: {current_tilt:.2f}", (bx+5, by), 0, 0.6, (0,255,255), 2)
             log.save_image(frame); self.current_frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
 
     def update_gui_loop(self):
