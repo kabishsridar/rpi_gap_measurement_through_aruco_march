@@ -25,10 +25,10 @@ class MeasurementApp:
         self.size_top = tk.DoubleVar(value=DEFAULT_MARKER_SIZE)
         self.size_bot = tk.DoubleVar(value=DEFAULT_MARKER_SIZE)
         self.fixed_side = tk.StringVar(value="Left")
-        self.rot_threshold = tk.DoubleVar(value=10.0) # Default 10 degrees
+        self.rot_threshold = tk.DoubleVar(value=10.0)
 
         temp = {"A":(0,0,0), "X":(0,0,0), "TR":(0,0,0), "BR":(0,0,0), "B":(0,0,0), "C":(0,0,0), 
-                "dist":0.0, "k":0.0, "L_Ang":(0,0), "R_Ang":(0,0), "rot_2d": 0.0}
+                "dist":0.0, "k":0.0, "L_A":(0,0), "R_A":(0,0), "rot_2d": 0.0}
         self.last_data = {"top": temp.copy(), "bottom": temp.copy(), "session_count": 0}
         self.is_running = True
         self.current_frame = None
@@ -41,7 +41,6 @@ class MeasurementApp:
     def setup_ui(self):
         self.tabs = ttk.Notebook(self.root); self.tabs.pack(fill='both', expand=True, padx=10, pady=10)
         
-        # TAB 1: LIVE FEED
         self.tab_live = ttk.Frame(self.tabs); self.tabs.add(self.tab_live, text=" 📽 Live Monitor ")
         self.canvas = tk.Canvas(self.tab_live, width=960, height=540, bg="black"); self.canvas.pack(side="left", padx=20, pady=20)
         st = tk.Frame(self.tab_live, bg="#ecf0f1"); st.pack(side="right", fill="both", expand=True, padx=10, pady=20)
@@ -53,7 +52,6 @@ class MeasurementApp:
             if key == "top": self.lbl_dist_top, self.lbl_k_top = dl, kl
             else: self.lbl_dist_bot, self.lbl_k_bot = dl, kl
         
-        # TAB 2: SETTINGS
         self.tab_settings = ttk.Frame(self.tabs); self.tabs.add(self.tab_settings, text=" ⚙ Machine Configuration ")
         sc = tk.Frame(self.tab_settings, bg="#ecf0f1"); sc.pack(fill="both", expand=True, padx=100, pady=50)
         
@@ -61,14 +59,13 @@ class MeasurementApp:
         for choice in ["Left", "Right"]: tk.Radiobutton(rf, text=choice, variable=self.fixed_side, value=choice, bg="white").pack(side="left", padx=20)
 
         def create_sc(parent, label, var, color, min_v, max_v):
-            f = tk.LabelFrame(parent, text=f" {label} ", bg="white", font=("Helvetica", 10), fg=color, padx=20, pady=5)
-            f.pack(fill="x", pady=5)
+            f = tk.LabelFrame(parent, text=f" {label} ", bg="white", font=("Helvetica", 10), fg=color, padx=20, pady=5); f.pack(fill="x", pady=5)
             tk.Scale(f, from_=min_v, to=max_v, resolution=0.1, orient="horizontal", variable=var, bg="white", length=400).pack(side="left", padx=20)
             tk.Entry(f, textvariable=var, width=8).pack(side="left")
 
         create_sc(sc, "Upper Pair Marker Size (mm)", self.size_top, "#e67e22", 10, 200)
         create_sc(sc, "Down Pair Marker Size (mm)", self.size_bot, "#9b59b6", 10, 200)
-        create_sc(sc, "Rotation Threshold Deg (Fallback Trigger)", self.rot_threshold, "#34495e", 0, 90)
+        create_sc(sc, "Rotation Threshold Deg", self.rot_threshold, "#34495e", 0, 90)
 
     def load_calibrated_params(self):
         target = "camera_params_2.npz" if self.fixed_side.get() == "Right" else "camera_params.npz"
@@ -88,7 +85,8 @@ class MeasurementApp:
 
         while self.is_running:
             K, dist = self.load_calibrated_params()
-            frame = cv.cvtColor(pc.capture_array(), cv.COLOR_RGB2BGR)
+            try: frame = cv.cvtColor(pc.capture_array(), cv.COLOR_RGB2BGR)
+            except: continue
             corners, ids, _ = detector.detectMarkers(cv.cvtColor(frame, cv.COLOR_BGR2GRAY))
             curr = time.time() * 1000
 
@@ -106,8 +104,7 @@ class MeasurementApp:
                         _, rv, tv = cv.solvePnP(obj, c2d, K, dist); R, _ = cv.Rodrigues(rv)
                         pts3d = np.array([np.dot(R, pt) + tv.ravel() for pt in obj])
                         idx = np.argsort(c2d[:, 0]); dy, dx = c2d[idx[2], 1]-c2d[idx[0], 1], c2d[idx[2], 0]-c2d[idx[0], 0]
-                        rot2d = math.degrees(math.atan2(dy, dx))
-                        return pts3d, rot2d, math.degrees(math.atan2(R[1,0], R[0,0])), math.degrees(math.acos(np.clip(R[2,2], -1,1)))
+                        return pts3d, math.degrees(math.atan2(dy, dx)), math.degrees(math.atan2(R[1,0], R[0,0])), math.degrees(math.acos(np.clip(R[2,2], -1,1)))
 
                     def extract_inner(pts3d, p2d, find_right_side=True):
                         idx = np.argsort(p2d[:, 0])
@@ -130,21 +127,21 @@ class MeasurementApp:
                     for key in ["top", "bottom"]:
                         if buffers[key]:
                             s = buffers[key]; aA, aTR, aBR = [np.mean([x[k] for x in s], axis=0) for k in ["A", "TR", "BR"]]
-                            aXalt, aB, aC = [np.mean([x[k] for x in s], axis=0) for k in ["X_alt", "B", "C"]]
+                            aX_alt, aB, aC = [np.mean([x[k] for x in s], axis=0) for k in ["X_alt", "B", "C"]]
+                            aL, aR = [np.mean([x[k] for x in s], axis=0) for k in ["L_A", "R_A"]]
                             avg_rot = np.mean([x["rot"] for x in s])
                             
-                            # Rotation Trigger using slider value
                             if avg_rot > self.rot_threshold.get():
-                                aX = aXalt; dist_v = np.linalg.norm(aX - aA); kv = 0.5
+                                aX = aX_alt; dist_v = np.linalg.norm(aX - aA); kv = 0.5
                             else:
-                                v_vec = (aTR-aA)/np.linalg.norm(aTR-aA); w_vec, u_vec = aC-aB, aB-aA
-                                den = (np.dot(v_vec,v_vec)*np.dot(w_vec,w_vec))-(np.dot(v_vec,w_vec)**2)
+                                v = (aTR-aA)/np.linalg.norm(aTR-aA) if np.linalg.norm(aTR-aA)>0 else np.zeros(3)
+                                w, u = aC-aB, aB-aA; den = (np.dot(v,v)*np.dot(w,w))-(np.dot(v,w)**2)
                                 if abs(den)>1e-6:
-                                    kv = ((np.dot(v_vec,w_vec)*np.dot(u_vec,v_vec))-(np.dot(v_vec,v_vec)*np.dot(u_vec,w_vec)))/den
-                                    aX = aB + kv * w_vec; dist_v = np.linalg.norm(aX-aA)
+                                    kv = ((np.dot(v,w)*np.dot(u,v))-(np.dot(v,v)*np.dot(u,w)))/den
+                                    aX = aB + kv * w; dist_v = np.linalg.norm(aX-aA)
                                 else: aX = aB; dist_v = 0.0; kv = 0.0
                             
-                            self.last_data[key].update({"A":aA, "X":aX, "dist":dist_v, "k":kv, "rot_2d":avg_rot})
+                            self.last_data[key].update({"A":aA, "X":aX, "dist":dist_v, "k":kv, "rot_2d":avg_rot, "L_A":aL, "R_A":aR})
                             buffers[key].clear()
                     l_u = curr
             else: self.last_data["top"]["dist"] = self.last_data["bottom"]["dist"] = 0.0
@@ -169,4 +166,6 @@ class MeasurementApp:
         self.root.after(50, self.update_gui_loop)
 
 if __name__ == "__main__":
-    tk.Tk().mainloop() if not MeasurementApp(tk.Tk()) else None
+    root = tk.Tk()
+    app = MeasurementApp(root)
+    root.mainloop()
