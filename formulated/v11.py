@@ -25,7 +25,7 @@ class MeasurementApp:
         self.size_top = tk.DoubleVar(value=DEFAULT_MARKER_SIZE)
         self.size_bot = tk.DoubleVar(value=DEFAULT_MARKER_SIZE)
         self.fixed_side = tk.StringVar(value="Left")
-        self.rot_threshold = tk.DoubleVar(value=15.0)
+        self.rot_threshold = tk.DoubleVar(value=12.0)
 
         temp = {"A": (0,0,0), "X": (0,0,0), "TR": (0,0,0), "BR": (0,0,0),
                 "B": (0,0,0), "C": (0,0,0), "dist": 0.0, "k": 0.0,
