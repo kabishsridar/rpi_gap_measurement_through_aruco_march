@@ -381,7 +381,18 @@ class MeasurementApp:
                 if (d["dist"] > 0
                         and d.get("p1_px") is not None
                         and d.get("p2_px") is not None):
-                    p1, p2 = d["p1_px"], d["p2_px"]
+                    p1 = d["p1_px"]   # 2D: midpoint of source inner edge
+
+                    # Project aX (3D camera-space perpendicular intersection)
+                    # to 2D screen. aX is already in camera space, so rvec/tvec = 0.
+                    X_3d = np.array([d["X"]], dtype=np.float64).reshape(1, 1, 3)
+                    if d["X"][2] > 0:
+                        p_proj, _ = cv.projectPoints(X_3d, np.zeros(3), np.zeros(3),
+                                                     K, dist_c)
+                        p2 = tuple(p_proj[0].ravel().astype(int))
+                    else:
+                        p2 = d["p2_px"]   # fallback if X behind camera
+
                     cv.line(frame, p1, p2, color, 3)
                     cv.circle(frame, p2, 6, (0, 255, 0), -1)
                     cv.putText(frame,
