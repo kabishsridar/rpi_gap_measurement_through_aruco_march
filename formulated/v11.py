@@ -191,12 +191,32 @@ class MeasurementApp:
                             # Pixel draw points: average of last buffer samples
                             p1_px = tuple(np.mean([x["p1_px"] for x in s], axis=0).astype(int))
                             p2_px = tuple(np.mean([x["p2_px"] for x in s], axis=0).astype(int))
-                            if avg_rot > self.rot_threshold.get(): aX, dv, kv = aX_alt, np.linalg.norm(aX_alt - aA), 0.5
+                            if avg_rot > self.rot_threshold.get():
+                                # HIGH ROTATION FALLBACK (> threshold):
+                                # Marker is too tilted for accurate ray-intersection.
+                                # Use midpoint of target inner edge directly as X.
+                                aX = aX_alt
+                                dv = np.linalg.norm(aX - aA)
+                                kv = 0.5  # Midpoint of target edge
                             else:
-                                v = (aTR-aA)/np.linalg.norm(aTR-aA) if np.linalg.norm(aTR-aA)>0 else np.zeros(3); w, u = aC-aB, aB-aA
-                                den = (np.dot(v,v)*np.dot(w,w))-(np.dot(v,w)**2)
-                                if abs(den)>1e-6: kv = ((np.dot(v,w)*np.dot(u,v))-(np.dot(v,v)*np.dot(u,w)))/den; aX=aB+kv*w; dv=np.linalg.norm(aX-aA)
-                                else: aX=aB; dv=0.0; kv=0.0
+                                # PRIMARY METHOD — v8 perpendicular ray-intersection:
+                                # v_vec: direction along source marker's inner edge (TR→BR in 3D)
+                                # This is the perpendicular "ray" fired from point A
+                                inner_edge_vec = aBR - aTR
+                                inner_len = np.linalg.norm(inner_edge_vec)
+                                v = inner_edge_vec / inner_len if inner_len > 0 else np.zeros(3)
+                                # w_vec: direction along target inner edge (B→C in 3D)
+                                # u_vec: vector from source midpoint A to target start B
+                                w, u = aC - aB, aB - aA
+                                den = (np.dot(v,v)*np.dot(w,w)) - (np.dot(v,w)**2)
+                                if abs(den) > 1e-6:
+                                    # Solve for k: X = B + k * w_vec
+                                    kv = ((np.dot(v,w)*np.dot(u,v)) - (np.dot(v,v)*np.dot(u,w))) / den
+                                    aX = aB + kv * w
+                                    dv = np.linalg.norm(aX - aA)
+                                else:
+                                    # Degenerate case: edges are parallel, use B directly
+                                    aX = aB; dv = 0.0; kv = 0.0
                             avg_Lz = float(np.mean([x["L_z"] for x in s]))
                             avg_Rz = float(np.mean([x["R_z"] for x in s]))
                             self.last_data[k].update({"A":aA, "X":aX, "TR":aTR, "BR":aBR, "B":aB, "C":aC, "dist":dv, "k":kv, "rot_2d":avg_rot, "L_A":aL, "R_A":aR, "L_z":avg_Lz, "R_z":avg_Rz, "p1_px":p1_px, "p2_px":p2_px})
