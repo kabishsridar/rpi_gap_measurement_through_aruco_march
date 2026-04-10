@@ -108,7 +108,6 @@ class MeasurementApp:
         self._build_tab_tele()
         self._build_tab_settings()
         self._build_tab_cam()
-        self._build_tab_movement()
 
     # ── helper: card frame ─────────────────────────────────────────────────
     def _card(self, parent, title, title_color, **pack_kw):
@@ -119,35 +118,116 @@ class MeasurementApp:
         f.pack(**pack_kw)
         return f
 
-    # ── TAB 1: LIVE MONITOR ───────────────────────────────────────────────
+    # ── TAB 1: MOVEMENT (live feed + movement monitor) ────────────────────
     def _build_tab_live(self):
         tab = ttk.Frame(self.tabs)
-        self.tabs.add(tab, text=" 📽  Live Monitor ")
+        self.tabs.add(tab, text=" 📏  Movement ")
         tab.configure(style="TFrame")
 
+        # ── Left: camera feed ─────────────────────────────────────────────
         left = tk.Frame(tab, bg=C_BG)
         left.pack(side="left", padx=16, pady=16)
         self.canvas = tk.Canvas(left, width=960, height=540, bg="black",
                                 highlightthickness=1, highlightbackground=C_MUTED)
         self.canvas.pack()
 
+        # ── Right: live distances → buttons → results ─────────────────────
         right = tk.Frame(tab, bg=C_BG)
-        right.pack(side="right", fill="both", expand=True, padx=12, pady=16)
+        right.pack(side="right", fill="both", expand=True, padx=12, pady=10)
 
+        # ── Live distance cards ────────────────────────────────────────────
         for key, title, col in [("top", "TOP PAIR", C_TOP),
                                  ("bottom", "BOTTOM PAIR", C_BOT)]:
-            card = self._card(right, title, col,
-                              fill="x", pady=10, padx=6)
+            card = self._card(right, title, col, fill="x", pady=6, padx=6)
             dl = tk.Label(card, text="0.000 mm",
-                          font=("Helvetica", 26, "bold"), fg=C_GREEN, bg=C_CARD)
-            dl.pack(pady=(6, 2))
+                          font=("Helvetica", 24, "bold"), fg=C_GREEN, bg=C_CARD)
+            dl.pack(pady=(4, 0))
             kl = tk.Label(card, text="k: 0.0000",
-                          font=("Helvetica", 11), fg=C_MUTED, bg=C_CARD)
+                          font=("Helvetica", 10), fg=C_MUTED, bg=C_CARD)
             kl.pack(pady=(0, 4))
             if key == "top":
                 self.lbl_dist_top, self.lbl_k_top = dl, kl
             else:
                 self.lbl_dist_bot, self.lbl_k_bot = dl, kl
+
+        # ── Status + progress ─────────────────────────────────────────────
+        self.mv_status_lbl = tk.Label(
+            right, text="Press  START  to capture initial gap",
+            font=("Helvetica", 11), fg="#dfe6e9", bg=C_BG,
+            wraplength=260, justify="center")
+        self.mv_status_lbl.pack(pady=(10, 2))
+
+        prog_f = tk.Frame(right, bg=C_BG)
+        prog_f.pack(fill="x", padx=6)
+        self.mv_prog_lbl = tk.Label(prog_f, text="",
+                                    font=("Helvetica", 10), fg=C_GREEN, bg=C_BG)
+        self.mv_prog_lbl.pack()
+        self.mv_prog_bar = ttk.Progressbar(prog_f, length=240, maximum=COLLECT_N,
+                                           mode="determinate")
+        self.mv_prog_bar.pack(pady=2)
+
+        # ── START / STOP / RESET buttons ───────────────────────────────────
+        btn_f = tk.Frame(right, bg=C_BG)
+        btn_f.pack(pady=8, fill="x", padx=6)
+        btn_cfg = dict(font=("Helvetica", 13, "bold"), relief="flat",
+                       padx=14, pady=8, bd=0, cursor="hand2")
+
+        self.btn_start = tk.Button(
+            btn_f, text="▶ START", bg=C_GREEN, fg="white",
+            activebackground="#00cec9",
+            command=self._mv_start, **btn_cfg)
+        self.btn_start.pack(side="left", expand=True, fill="x", padx=2)
+
+        self.btn_stop = tk.Button(
+            btn_f, text="■ STOP", bg=C_RED, fg="white",
+            activebackground="#ff7675",
+            state="disabled",
+            command=self._mv_stop, **btn_cfg)
+        self.btn_stop.pack(side="left", expand=True, fill="x", padx=2)
+
+        self.btn_reset = tk.Button(
+            btn_f, text="↺", bg=C_MUTED, fg="white",
+            activebackground="#b2bec3",
+            command=self._mv_reset, **btn_cfg)
+        self.btn_reset.pack(side="left", padx=2)
+
+        # ── Divider ────────────────────────────────────────────────────────
+        tk.Frame(right, bg=C_MUTED, height=1).pack(fill="x", padx=6, pady=8)
+        tk.Label(right, text="Distance Moved",
+                 font=("Helvetica", 11, "bold"), fg="#dfe6e9",
+                 bg=C_BG).pack()
+
+        # ── Delta result rows for TOP and BOTTOM ───────────────────────────
+        for key, title, col in [("top", "TOP", C_TOP), ("bottom", "BOT", C_BOT)]:
+            row = tk.Frame(right, bg=C_CARD, bd=1, relief="solid")
+            row.pack(fill="x", padx=6, pady=4)
+
+            tk.Label(row, text=title, font=("Helvetica", 10, "bold"),
+                     fg=col, bg=C_CARD, width=5).pack(side="left", padx=6, pady=6)
+
+            # initial / final sub-labels
+            info = tk.Frame(row, bg=C_CARD);  info.pack(side="left", expand=True)
+            init_lbl  = tk.Label(info, text="Init: —",
+                                 font=("Helvetica", 9), fg=C_MUTED, bg=C_CARD, anchor="w")
+            init_lbl.pack(fill="x", padx=4)
+            final_lbl = tk.Label(info, text="Final: —",
+                                 font=("Helvetica", 9), fg=C_MUTED, bg=C_CARD, anchor="w")
+            final_lbl.pack(fill="x", padx=4)
+
+            # big delta
+            delta_lbl = tk.Label(row, text="—",
+                                 font=("Helvetica", 22, "bold"),
+                                 fg=C_BLUE, bg=C_CARD)
+            delta_lbl.pack(side="right", padx=10, pady=6)
+
+            if key == "top":
+                self.mv_init_lbl_top  = init_lbl
+                self.mv_final_lbl_top = final_lbl
+                self.mv_delta_lbl_top = delta_lbl
+            else:
+                self.mv_init_lbl_bot  = init_lbl
+                self.mv_final_lbl_bot = final_lbl
+                self.mv_delta_lbl_bot = delta_lbl
 
     # ── TAB 2: DUAL TELEMETRY ─────────────────────────────────────────────
     def _build_tab_tele(self):
@@ -277,105 +357,6 @@ class MeasurementApp:
                   activebackground="#c0392b", relief="flat", padx=10, pady=6,
                   command=self._reset_cam).pack(pady=10, fill="x", padx=6)
 
-    # ── TAB 5: MOVEMENT MONITOR ───────────────────────────────────────────
-    def _build_tab_movement(self):
-        tab = ttk.Frame(self.tabs)
-        self.tabs.add(tab, text=" 📏  Movement Monitor ")
-
-        # ── Outer layout: top = controls, bottom = results ─────────────────
-        top_bar = tk.Frame(tab, bg=C_BG)
-        top_bar.pack(fill="x", padx=20, pady=(18, 0))
-
-        result_area = tk.Frame(tab, bg=C_BG)
-        result_area.pack(fill="both", expand=True, padx=20, pady=12)
-
-        # ── Status label ───────────────────────────────────────────────────
-        self.mv_status_lbl = tk.Label(
-            top_bar, text="Press  START  to capture initial gap distance",
-            font=("Helvetica", 13), fg="#dfe6e9", bg=C_BG)
-        self.mv_status_lbl.pack(side="left", padx=(0, 30))
-
-        # ── Progress bar (hidden until collecting) ─────────────────────────
-        prog_frame = tk.Frame(top_bar, bg=C_BG)
-        prog_frame.pack(side="left", padx=(0, 30))
-        self.mv_prog_lbl = tk.Label(prog_frame, text="",
-                                    font=("Helvetica", 11), fg=C_GREEN, bg=C_BG)
-        self.mv_prog_lbl.pack()
-        self.mv_prog_bar = ttk.Progressbar(prog_frame, length=180, maximum=COLLECT_N,
-                                           mode="determinate")
-        self.mv_prog_bar.pack(pady=2)
-
-        # ── START / STOP / RESET buttons ───────────────────────────────────
-        btn_frame = tk.Frame(top_bar, bg=C_BG)
-        btn_frame.pack(side="right")
-
-        btn_cfg = dict(font=("Helvetica", 14, "bold"), relief="flat",
-                       padx=24, pady=10, bd=0, cursor="hand2")
-
-        self.btn_start = tk.Button(
-            btn_frame, text="▶  START", bg=C_GREEN, fg="white",
-            activebackground="#00cec9",
-            command=self._mv_start, **btn_cfg)
-        self.btn_start.pack(side="left", padx=8)
-
-        self.btn_stop = tk.Button(
-            btn_frame, text="■  STOP", bg=C_RED, fg="white",
-            activebackground="#ff7675",
-            state="disabled",
-            command=self._mv_stop, **btn_cfg)
-        self.btn_stop.pack(side="left", padx=8)
-
-        self.btn_reset = tk.Button(
-            btn_frame, text="↺  RESET", bg=C_MUTED, fg="white",
-            activebackground="#b2bec3",
-            command=self._mv_reset, **btn_cfg)
-        self.btn_reset.pack(side="left", padx=8)
-
-        # ── Separator ──────────────────────────────────────────────────────
-        sep = tk.Frame(tab, bg=C_MUTED, height=1)
-        sep.pack(fill="x", padx=20, pady=6)
-
-        # ── Result cards: TOP and BOTTOM side-by-side ─────────────────────
-        for key, title, col in [("top", "TOP PAIR", C_TOP),
-                                 ("bottom", "BOTTOM PAIR", C_BOT)]:
-            card = tk.LabelFrame(result_area, text=f"  {title}  ",
-                                 font=("Helvetica", 12, "bold"),
-                                 fg=col, bg=C_CARD, bd=1, relief="solid",
-                                 padx=20, pady=14)
-            card.pack(side="left", fill="both", expand=True, padx=12, pady=4)
-
-            # Row labels
-            def make_row(parent, label, fg_col=C_MUTED, font_sz=11):
-                row = tk.Frame(parent, bg=C_CARD)
-                row.pack(fill="x", pady=3)
-                tk.Label(row, text=label, font=("Helvetica", font_sz),
-                         fg=fg_col, bg=C_CARD, anchor="w",
-                         width=18).pack(side="left")
-                val = tk.Label(row, text="—", font=("Helvetica", font_sz, "bold"),
-                               fg=C_TEXT, bg=C_CARD, anchor="e")
-                val.pack(side="right")
-                return val
-
-            init_lbl  = make_row(card, "Initial Distance:")
-            final_lbl = make_row(card, "Final Distance:")
-
-            # Big delta display
-            tk.Frame(card, bg="#dfe6e9", height=1).pack(fill="x", pady=8)
-            tk.Label(card, text="Distance Moved",
-                     font=("Helvetica", 12), fg=C_MUTED, bg=C_CARD).pack()
-            delta_lbl = tk.Label(card, text="—",
-                                 font=("Helvetica", 40, "bold"),
-                                 fg=C_BLUE, bg=C_CARD)
-            delta_lbl.pack(pady=(4, 6))
-
-            if key == "top":
-                self.mv_init_lbl_top  = init_lbl
-                self.mv_final_lbl_top = final_lbl
-                self.mv_delta_lbl_top = delta_lbl
-            else:
-                self.mv_init_lbl_bot  = init_lbl
-                self.mv_final_lbl_bot = final_lbl
-                self.mv_delta_lbl_bot = delta_lbl
 
     # ══════════════════════ MOVEMENT MONITOR LOGIC ═════════════════════════
     def _mv_start(self):
@@ -415,12 +396,13 @@ class MeasurementApp:
         self.mv_prog_bar["value"] = 0
         self.mv_prog_lbl.config(text="")
         self.mv_status_lbl.config(
-            text="Press  START  to capture initial gap distance", fg="#dfe6e9")
-        for lbl in [self.mv_init_lbl_top,  self.mv_init_lbl_bot,
-                    self.mv_final_lbl_top, self.mv_final_lbl_bot]:
-            lbl.config(text="—", fg=C_TEXT)
-        for lbl in [self.mv_delta_lbl_top, self.mv_delta_lbl_bot]:
-            lbl.config(text="—", fg=C_BLUE)
+            text="Press  START  to capture initial gap", fg="#dfe6e9")
+        self.mv_init_lbl_top.config(text="Init: —",   fg=C_MUTED)
+        self.mv_init_lbl_bot.config(text="Init: —",   fg=C_MUTED)
+        self.mv_final_lbl_top.config(text="Final: —", fg=C_MUTED)
+        self.mv_final_lbl_bot.config(text="Final: —", fg=C_MUTED)
+        self.mv_delta_lbl_top.config(text="—", fg=C_BLUE)
+        self.mv_delta_lbl_bot.config(text="—", fg=C_BLUE)
 
     def _mv_tick(self):
         """
@@ -459,11 +441,10 @@ class MeasurementApp:
                 self.mv_status_lbl.config(
                     text="✅  Initial captured — move the panel, then press  STOP",
                     fg=C_GREEN)
-                # Update init labels
                 self.mv_init_lbl_top.config(
-                    text=f"{self.mv_dist_init['top']:.3f} mm", fg=C_TEXT)
+                    text=f"Init: {self.mv_dist_init['top']:.3f} mm", fg=C_TEXT)
                 self.mv_init_lbl_bot.config(
-                    text=f"{self.mv_dist_init['bottom']:.3f} mm", fg=C_TEXT)
+                    text=f"Init: {self.mv_dist_init['bottom']:.3f} mm", fg=C_TEXT)
 
         elif self.mv_state == "collecting_final":
             for key in ["top", "bottom"]:
@@ -502,8 +483,8 @@ class MeasurementApp:
                     di = self.mv_dist_init[key]
                     df = self.mv_dist_final[key]
                     delta = df - di
-                    init_lbl.config(text=f"{di:.3f} mm",    fg=C_TEXT)
-                    final_lbl.config(text=f"{df:.3f} mm",   fg=C_TEXT)
+                    init_lbl.config(text=f"Init: {di:.3f} mm",    fg=C_TEXT)
+                    final_lbl.config(text=f"Final: {df:.3f} mm",  fg=C_TEXT)
                     sign  = "+" if delta >= 0 else ""
                     color = C_RED if delta > 0.5 else (C_GREEN if delta < -0.5 else C_BLUE)
                     delta_lbl.config(text=f"{sign}{delta:.3f} mm", fg=color)
