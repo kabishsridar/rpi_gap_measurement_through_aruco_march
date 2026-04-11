@@ -9,11 +9,16 @@ import time
 from PIL import Image, ImageTk
 import log
 
-# --- SETTINGS ---
+# ── Constants ──────────────────────────────────────────────────────────────────
 DEFAULT_MARKER_SIZE = 53.8
-ARUCO_DICT = cv.aruco.DICT_4X4_50
-RESOLUTION  = (1280, 720)
-COLLECT_N   = 5          # readings to average for initial / final
+ARUCO_DICT          = cv.aruco.DICT_4X4_50
+RESOLUTION          = (1280, 720)
+COLLECT_N           = 5          # readings to average for initial / final
+
+# Lighting health thresholds (pixel intensity 0-255)
+LIGHT_LOW    = 40     # mean brightness below → too dark
+LIGHT_HIGH   = 215    # mean brightness above → overexposed
+CONTRAST_MIN = 18     # std-dev below → flat / foggy / blown-out
 
 AWB_MODES = {
     "Auto":        0,
@@ -24,86 +29,67 @@ AWB_MODES = {
     "Cloudy":      5,
 }
 
-# ── Colour palette ──────────────────────────────────────────────────────────
-C_BG      = "#0f1923"
-C_PANEL   = "#1a2636"
-C_CARD    = "#1e2d40"
-C_CARD_LT = "#253347"
-C_TOP     = "#e67e22"
-C_BOT     = "#9b59b6"
-C_GREEN   = "#00e676"
-C_RED     = "#ff1744"
-C_YELLOW  = "#ffd600"
-C_ORANGE  = "#ff6d00"
-C_BLUE    = "#40c4ff"
-C_TEAL    = "#00e5ff"
-C_TEXT    = "#ecf0f1"
-C_MUTED   = "#607d8b"
-C_WHITE   = "#ffffff"
-
-# ── Warning severity colours ─────────────────────────────────────────────────
-W_OK      = C_GREEN
-W_WARN    = C_YELLOW
-W_ERROR   = C_RED
+# ── v14 colour palette (unchanged) ────────────────────────────────────────────
+C_BG    = "#1e272e"
+C_PANEL = "#2d3436"
+C_CARD  = "#ffffff"
+C_TOP   = "#e67e22"
+C_BOT   = "#9b59b6"
+C_GREEN = "#00b894"
+C_RED   = "#d63031"
+C_BLUE  = "#0984e3"
+C_TEXT  = "#2d3436"
+C_MUTED = "#636e72"
+C_AMBER = "#f39c12"
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  Helpers
-# ═══════════════════════════════════════════════════════════════════════════════
-
+# ══════════════════════════════════════════════════════════════════════════════
+#  Euler-angle helper
+# ══════════════════════════════════════════════════════════════════════════════
 def rotation_to_euler(R):
     """
-    Decompose a 3×3 rotation matrix into (pitch, yaw, roll) in degrees.
+    Decompose an OpenCV 3×3 rotation matrix into (pitch, yaw, roll) degrees.
 
-    Convention used (OpenCV camera frame):
-      • pitch  – rotation around X-axis  →  forward/backward tilt
-      • yaw    – rotation around Y-axis  →  left/right tilt
-      • roll   – rotation around Z-axis  →  in-plane spin
-
-    Returns (pitch_deg, yaw_deg, roll_deg)
+    Camera-frame XYZ convention
+    ──────────────────────────────────────────────────────────────────────────
+    pitch  – rotation around X-axis: marker top tilts toward / away from lens
+    yaw    – rotation around Y-axis: left edge closer / right edge closer
+              → "one side in, one side out" scenario shows as large |yaw|
+    roll   – rotation around Z-axis: in-plane spin (already tracked as rot_2d)
     """
     sy = math.sqrt(R[0, 0] ** 2 + R[1, 0] ** 2)
-    singular = sy < 1e-6
-
-    if not singular:
-        roll  = math.degrees(math.atan2(R[2, 1], R[2, 2]))
-        pitch = math.degrees(math.atan2(-R[2, 0], sy))
-        yaw   = math.degrees(math.atan2(R[1, 0], R[0, 0]))
-    else:
-        roll  = math.degrees(math.atan2(-R[1, 2], R[1, 1]))
-        pitch = math.degrees(math.atan2(-R[2, 0], sy))
+    if sy > 1e-6:
+        roll  = math.degrees(math.atan2( R[2, 1],  R[2, 2]))
+        pitch = math.degrees(math.atan2(-R[2, 0],  sy))
+        yaw   = math.degrees(math.atan2( R[1, 0],  R[0, 0]))
+    else:                               # gimbal-lock fallback
+        roll  = math.degrees(math.atan2(-R[1, 2],  R[1, 1]))
+        pitch = math.degrees(math.atan2(-R[2, 0],  sy))
         yaw   = 0.0
-
     return pitch, yaw, roll
 
 
-def inplane_rot_deg(c_sorted):
-    """In-plane 2-D rotation from the top edge of sorted corners."""
-    return math.degrees(math.atan2(
-        c_sorted[1, 1] - c_sorted[0, 1],
-        c_sorted[1, 0] - c_sorted[0, 0]))
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#  Main Application
-# ═══════════════════════════════════════════════════════════════════════════════
-
+# ══════════════════════════════════════════════════════════════════════════════
+#  Application
+# ══════════════════════════════════════════════════════════════════════════════
 class MeasurementApp:
+
     def __init__(self, root):
         self.root = root
         self.root.title("Dual-Pair ArUco Measurement v15")
-        self.root.geometry("1680x980")
+        self.root.geometry("1600x960")
         self.root.configure(bg=C_BG)
 
         # ── Measurement vars ──────────────────────────────────────────────────
-        self.size_top          = tk.DoubleVar(value=DEFAULT_MARKER_SIZE)
-        self.size_bot          = tk.DoubleVar(value=DEFAULT_MARKER_SIZE)
-        self.fixed_side        = tk.StringVar(value="Left")
-        self.rot_threshold     = tk.DoubleVar(value=12.0)
-        self.tilt_threshold    = tk.DoubleVar(value=10.0)   # NEW: pitch / yaw tilt warning
-        self.use_angle_thresh  = tk.BooleanVar(value=True)
+        self.size_top         = tk.DoubleVar(value=DEFAULT_MARKER_SIZE)
+        self.size_bot         = tk.DoubleVar(value=DEFAULT_MARKER_SIZE)
+        self.fixed_side       = tk.StringVar(value="Left")
+        self.rot_threshold    = tk.DoubleVar(value=12.0)
+        self.pitch_threshold  = tk.DoubleVar(value=10.0)   # NEW
+        self.yaw_threshold    = tk.DoubleVar(value=10.0)   # NEW
+        self.use_angle_thresh = tk.BooleanVar(value=True)
 
-        # ── Camera control vars ───────────────────────────────────────────────
+        # ── Camera vars ───────────────────────────────────────────────────────
         self.cam_ae         = tk.BooleanVar(value=True)
         self.cam_exposure   = tk.IntVar(value=10000)
         self.cam_gain       = tk.DoubleVar(value=2.0)
@@ -116,7 +102,7 @@ class MeasurementApp:
         self.pc             = None
         self._cam_preview_frame = None
 
-        # ── Movement Monitor state ────────────────────────────────────────────
+        # ── Movement monitor state ────────────────────────────────────────────
         self.mv_state       = "idle"
         self.mv_init_buf    = {"top": [], "bottom": []}
         self.mv_final_buf   = {"top": [], "bottom": []}
@@ -124,30 +110,27 @@ class MeasurementApp:
         self.mv_dist_final  = {"top": None, "bottom": None}
         self._last_sc       = 0
 
-        # ── Shared measurement data ───────────────────────────────────────────
-        # Added per-marker pitch/yaw/roll for tilt warnings
-        def _empty_pair():
+        # ── Shared data (bg thread writes, GUI thread reads) ──────────────────
+        def _empty():
             return {
                 "A": (0,0,0), "X": (0,0,0), "TR": (0,0,0), "BR": (0,0,0),
                 "B": (0,0,0), "C": (0,0,0), "dist": 0.0, "k": 0.0,
                 "L_A": (0.0, 0.0), "R_A": (0.0, 0.0), "rot_2d": 0.0,
                 "L_z": 0.0, "R_z": 0.0, "p1_px": None, "p2_px": None,
-                # NEW: euler angles per marker (pitch, yaw, roll)
-                "L_pitch": 0.0, "L_yaw": 0.0, "L_roll": 0.0,
-                "R_pitch": 0.0, "R_yaw": 0.0, "R_roll": 0.0,
-                # NEW: detection flags
-                "L_detected": False, "R_detected": False,
+                # Euler angles (new)
+                "L_pitch": 0.0, "L_yaw": 0.0,
+                "R_pitch": 0.0, "R_yaw": 0.0,
+                # Detection status (new)
+                "L_det": False, "R_det": False,
             }
 
         self.last_data = {
-            "top":    _empty_pair(),
-            "bottom": _empty_pair(),
+            "top":    _empty(),
+            "bottom": _empty(),
             "session_count": 0,
+            # Lighting (written by bg thread every frame)
+            "lighting": {"status": "no_frame", "mean": 0.0, "std": 0.0},
         }
-
-        # ── Warning state (computed each GUI tick) ────────────────────────────
-        # List of {"label", "colour", "icon"} dicts
-        self._warnings = []
 
         self.is_running    = True
         self.current_frame = None
@@ -158,84 +141,75 @@ class MeasurementApp:
         self.update_gui_loop()
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  Style
+    #  Style  (v14-identical)
     # ══════════════════════════════════════════════════════════════════════════
     def _style(self):
         s = ttk.Style()
-        s.theme_use("clam")
-        s.configure("TNotebook", background=C_BG, borderwidth=0)
-        s.configure("TNotebook.Tab", background=C_PANEL, foreground=C_TEXT,
-                    padding=[14, 6], font=("Helvetica", 10, "bold"))
+        s.theme_use('clam')
+        s.configure("TNotebook",       background=C_BG,    borderwidth=0)
+        s.configure("TNotebook.Tab",   background=C_PANEL, foreground="white",
+                    padding=[14, 6],   font=("Helvetica", 10, "bold"))
         s.map("TNotebook.Tab",
-              background=[("selected", "#1565c0")],
-              foreground=[("selected", C_WHITE)])
+              background=[("selected", C_BLUE)],
+              foreground=[("selected", "white")])
         s.configure("TFrame", background=C_BG)
-        # Progressbar
-        s.configure("green.Horizontal.TProgressbar",
-                     troughcolor=C_CARD, background=C_GREEN,
-                     lightcolor=C_GREEN, darkcolor=C_GREEN, bordercolor=C_CARD)
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  UI wiring
+    #  UI wiring  — 4 tabs, same as v14
     # ══════════════════════════════════════════════════════════════════════════
     def setup_ui(self):
         self.tabs = ttk.Notebook(self.root)
-        self.tabs.pack(fill="both", expand=True, padx=8, pady=8)
+        self.tabs.pack(fill='both', expand=True, padx=8, pady=8)
         self._build_tab_live()
-        self._build_tab_warnings()
         self._build_tab_tele()
         self._build_tab_settings()
         self._build_tab_cam()
 
-    # ── Generic helpers ───────────────────────────────────────────────────────
-    def _dark_card(self, parent, title, title_color, **pack_kw):
+    # ── helper: white card frame (v14-identical) ──────────────────────────────
+    def _card(self, parent, title, title_color, **pack_kw):
         f = tk.LabelFrame(parent, text=f"  {title}  ",
-                          font=("Helvetica", 10, "bold"),
+                          font=("Helvetica", 11, "bold"),
                           fg=title_color, bg=C_CARD,
-                          bd=1, relief="solid", padx=8, pady=6)
+                          bd=1, relief="solid", padx=10, pady=8)
         f.pack(**pack_kw)
         return f
 
-    def _label(self, parent, text, font=("Helvetica", 10), fg=C_TEXT, bg=C_BG, **kw):
-        lbl = tk.Label(parent, text=text, font=font, fg=fg, bg=bg, **kw)
-        return lbl
-
     # ══════════════════════════════════════════════════════════════════════════
-    #  TAB 1 — MOVEMENT (live feed + movement monitor)
+    #  TAB 1: MOVEMENT  (v14 layout + warning panel + strip)
     # ══════════════════════════════════════════════════════════════════════════
     def _build_tab_live(self):
         tab = ttk.Frame(self.tabs)
-        self.tabs.add(tab, text="  📏  Movement  ")
+        self.tabs.add(tab, text=" 📏  Movement ")
         tab.configure(style="TFrame")
 
         # ── Left: camera feed ─────────────────────────────────────────────────
         left = tk.Frame(tab, bg=C_BG)
-        left.pack(side="left", padx=12, pady=12)
+        left.pack(side="left", padx=16, pady=16)
 
-        self.canvas = tk.Canvas(left, width=960, height=540, bg="#050d17",
-                                highlightthickness=2, highlightbackground=C_BLUE)
+        self.canvas = tk.Canvas(left, width=960, height=540, bg="black",
+                                highlightthickness=1, highlightbackground=C_MUTED)
         self.canvas.pack()
 
-        # Mini warning strip below canvas
+        # Warning strip directly below the canvas
         self.warn_strip = tk.Label(
             left,
-            text="",
+            text="  ⏳  Waiting for camera data…",
             font=("Helvetica", 10, "bold"),
-            fg=C_BG, bg=C_CARD,
-            wraplength=960, justify="left", anchor="w",
-            padx=8, pady=4)
+            fg=C_MUTED, bg=C_CARD,
+            anchor="w", padx=8, pady=3,
+            wraplength=955, justify="left")
         self.warn_strip.pack(fill="x", pady=(4, 0))
 
-        # ── Right: live distances → buttons → results ─────────────────────────
+        # ── Right panel ───────────────────────────────────────────────────────
         right = tk.Frame(tab, bg=C_BG)
-        right.pack(side="right", fill="both", expand=True, padx=10, pady=10)
+        right.pack(side="right", fill="both", expand=True, padx=12, pady=10)
 
-        # Distance cards
+        # Distance cards  (v14-identical)
         for key, title, col in [("top", "TOP PAIR", C_TOP),
                                  ("bottom", "BOTTOM PAIR", C_BOT)]:
-            card = self._dark_card(right, title, col, fill="x", pady=4, padx=4)
+            card = self._card(right, title, col, fill="x", pady=6, padx=6)
             dl = tk.Label(card, text="0.000 mm",
-                          font=("Helvetica", 26, "bold"), fg=C_GREEN, bg=C_CARD)
+                          font=("Helvetica", 24, "bold"), fg=C_GREEN, bg=C_CARD)
             dl.pack(pady=(4, 0))
             kl = tk.Label(card, text="k: 0.0000",
                           font=("Helvetica", 10), fg=C_MUTED, bg=C_CARD)
@@ -245,68 +219,68 @@ class MeasurementApp:
             else:
                 self.lbl_dist_bot, self.lbl_k_bot = dl, kl
 
-        # Status + progress
+        # Status + progress  (v14-identical)
         self.mv_status_lbl = tk.Label(
             right, text="Press  START  to capture initial gap",
-            font=("Helvetica", 11), fg=C_TEXT, bg=C_BG,
-            wraplength=270, justify="center")
+            font=("Helvetica", 11), fg="#dfe6e9", bg=C_BG,
+            wraplength=260, justify="center")
         self.mv_status_lbl.pack(pady=(10, 2))
 
-        prog_f = tk.Frame(right, bg=C_BG); prog_f.pack(fill="x", padx=6)
+        prog_f = tk.Frame(right, bg=C_BG)
+        prog_f.pack(fill="x", padx=6)
         self.mv_prog_lbl = tk.Label(prog_f, text="",
                                     font=("Helvetica", 10), fg=C_GREEN, bg=C_BG)
         self.mv_prog_lbl.pack()
-        self.mv_prog_bar = ttk.Progressbar(
-            prog_f, length=240, maximum=COLLECT_N, mode="determinate",
-            style="green.Horizontal.TProgressbar")
+        self.mv_prog_bar = ttk.Progressbar(prog_f, length=240, maximum=COLLECT_N,
+                                           mode="determinate")
         self.mv_prog_bar.pack(pady=2)
 
-        # Buttons
-        btn_f = tk.Frame(right, bg=C_BG); btn_f.pack(pady=8, fill="x", padx=6)
+        # Buttons  (v14-identical)
+        btn_f = tk.Frame(right, bg=C_BG)
+        btn_f.pack(pady=8, fill="x", padx=6)
         btn_cfg = dict(font=("Helvetica", 13, "bold"), relief="flat",
                        padx=14, pady=8, bd=0, cursor="hand2")
 
-        self.btn_start = tk.Button(btn_f, text="▶ START", bg="#00897b", fg=C_WHITE,
-                                   activebackground="#26a69a",
-                                   command=self._mv_start, **btn_cfg)
+        self.btn_start = tk.Button(
+            btn_f, text="▶ START", bg=C_GREEN, fg="white",
+            activebackground="#00cec9",
+            command=self._mv_start, **btn_cfg)
         self.btn_start.pack(side="left", expand=True, fill="x", padx=2)
 
-        self.btn_stop = tk.Button(btn_f, text="■ STOP", bg="#c62828", fg=C_WHITE,
-                                  activebackground="#ef5350",
-                                  state="disabled",
-                                  command=self._mv_stop, **btn_cfg)
+        self.btn_stop = tk.Button(
+            btn_f, text="■ STOP", bg=C_RED, fg="white",
+            activebackground="#ff7675", state="disabled",
+            command=self._mv_stop, **btn_cfg)
         self.btn_stop.pack(side="left", expand=True, fill="x", padx=2)
 
-        self.btn_reset = tk.Button(btn_f, text="↺", bg=C_MUTED, fg=C_WHITE,
-                                   activebackground="#90a4ae",
-                                   command=self._mv_reset, **btn_cfg)
+        self.btn_reset = tk.Button(
+            btn_f, text="↺", bg=C_MUTED, fg="white",
+            activebackground="#b2bec3",
+            command=self._mv_reset, **btn_cfg)
         self.btn_reset.pack(side="left", padx=2)
 
-        # Divider
+        # Divider + heading  (v14-identical)
         tk.Frame(right, bg=C_MUTED, height=1).pack(fill="x", padx=6, pady=8)
-        tk.Label(right, text="Distance Moved", font=("Helvetica", 11, "bold"),
-                 fg=C_TEXT, bg=C_BG).pack()
+        tk.Label(right, text="Distance Moved",
+                 font=("Helvetica", 11, "bold"), fg="#dfe6e9",
+                 bg=C_BG).pack()
 
-        # Delta rows
+        # Delta rows  (v14-identical)
         for key, title, col in [("top", "TOP", C_TOP), ("bottom", "BOT", C_BOT)]:
-            row = tk.Frame(right, bg=C_CARD, bd=0, relief="flat",
-                           highlightbackground=C_MUTED, highlightthickness=1)
+            row = tk.Frame(right, bg=C_CARD, bd=1, relief="solid")
             row.pack(fill="x", padx=6, pady=4)
             tk.Label(row, text=title, font=("Helvetica", 10, "bold"),
                      fg=col, bg=C_CARD, width=5).pack(side="left", padx=6, pady=6)
-
             info = tk.Frame(row, bg=C_CARD); info.pack(side="left", expand=True)
-            init_lbl = tk.Label(info, text="Init: —", font=("Helvetica", 9),
-                                fg=C_MUTED, bg=C_CARD, anchor="w")
+            init_lbl  = tk.Label(info, text="Init: —",
+                                 font=("Helvetica", 9), fg=C_MUTED, bg=C_CARD, anchor="w")
             init_lbl.pack(fill="x", padx=4)
-            final_lbl = tk.Label(info, text="Final: —", font=("Helvetica", 9),
-                                 fg=C_MUTED, bg=C_CARD, anchor="w")
+            final_lbl = tk.Label(info, text="Final: —",
+                                 font=("Helvetica", 9), fg=C_MUTED, bg=C_CARD, anchor="w")
             final_lbl.pack(fill="x", padx=4)
-
-            delta_lbl = tk.Label(row, text="—", font=("Helvetica", 22, "bold"),
-                                 fg=C_BLUE, bg=C_CARD)
+            delta_lbl = tk.Label(row, text="—",
+                                 font=("Helvetica", 22, "bold"), fg=C_BLUE, bg=C_CARD)
             delta_lbl.pack(side="right", padx=10, pady=6)
-
             if key == "top":
                 self.mv_init_lbl_top  = init_lbl
                 self.mv_final_lbl_top = final_lbl
@@ -316,211 +290,128 @@ class MeasurementApp:
                 self.mv_final_lbl_bot = final_lbl
                 self.mv_delta_lbl_bot = delta_lbl
 
-    # ══════════════════════════════════════════════════════════════════════════
-    #  TAB 2 — WARNINGS DASHBOARD
-    # ══════════════════════════════════════════════════════════════════════════
-    def _build_tab_warnings(self):
-        tab = ttk.Frame(self.tabs)
-        self.tabs.add(tab, text="  ⚠  Warnings  ")
-        tab.configure(style="TFrame")
+        # ── NEW: compact warnings panel ───────────────────────────────────────
+        tk.Frame(right, bg=C_MUTED, height=1).pack(fill="x", padx=6, pady=(8, 4))
 
-        outer = tk.Frame(tab, bg=C_BG)
-        outer.pack(fill="both", expand=True, padx=20, pady=20)
+        warn_f = tk.LabelFrame(right, text="  ⚠  Warnings  ",
+                               font=("Helvetica", 10, "bold"),
+                               fg=C_RED, bg=C_CARD, bd=1, relief="solid",
+                               padx=6, pady=6)
+        warn_f.pack(fill="x", padx=6)
 
-        # Header
-        hdr = tk.Frame(outer, bg=C_BG)
-        hdr.pack(fill="x", pady=(0, 14))
-        tk.Label(hdr, text="ArUco Health Monitor",
-                 font=("Helvetica", 18, "bold"), fg=C_TEAL, bg=C_BG).pack(side="left")
-        self.warn_overall_icon = tk.Label(
-            hdr, text="●", font=("Helvetica", 22), fg=C_MUTED, bg=C_BG)
-        self.warn_overall_icon.pack(side="right", padx=6)
-        self.warn_overall_lbl = tk.Label(
-            hdr, text="No data yet", font=("Helvetica", 12, "bold"),
-            fg=C_MUTED, bg=C_BG)
-        self.warn_overall_lbl.pack(side="right")
+        # Column-header row
+        hdr = tk.Frame(warn_f, bg=C_CARD)
+        hdr.pack(fill="x")
+        for col_i, txt in enumerate(["", "L-Det", "R-Det", " Rot ", "Pitch", " Yaw "]):
+            w = 4 if col_i == 0 else 6
+            tk.Label(hdr, text=txt, font=("Helvetica", 7, "bold"),
+                     fg=C_MUTED, bg=C_CARD, width=w,
+                     anchor="center").grid(row=0, column=col_i, padx=1)
 
-        # Tilt threshold control — placed at top of warnings tab
-        thr_card = tk.LabelFrame(outer, text="  Tilt Threshold (°)  ",
-                                 font=("Helvetica", 10, "bold"), fg=C_TEAL,
-                                 bg=C_CARD, bd=1, relief="solid", padx=12, pady=8)
-        thr_card.pack(fill="x", pady=(0, 14))
+        # Dot rows — self.warn_dots[pair][field] = tk.Label
+        self.warn_dots = {}
+        for r_i, (key, title, col) in enumerate(
+                [("top", "TOP", C_TOP), ("bottom", "BOT", C_BOT)], start=1):
+            dots = {}
+            tk.Label(hdr, text=title, font=("Helvetica", 8, "bold"),
+                     fg=col, bg=C_CARD, width=4, anchor="w").grid(
+                row=r_i, column=0, padx=(0, 2), pady=2)
+            for c_i, field in enumerate(["L_det", "R_det", "rot", "pitch", "yaw"], start=1):
+                dot = tk.Label(hdr, text="●", font=("Helvetica", 14),
+                               fg=C_MUTED, bg=C_CARD, width=6, anchor="center")
+                dot.grid(row=r_i, column=c_i, padx=1, pady=2)
+                dots[field] = dot
+            self.warn_dots[key] = dots
 
-        thr_inner = tk.Frame(thr_card, bg=C_CARD); thr_inner.pack(fill="x")
-        tk.Label(thr_inner,
-                 text=(
-                     "Tilt threshold sets the maximum allowed pitch (forward / backward)\n"
-                     "and yaw (left / right) angle for each marker. "
-                     "Exceeding it triggers a warning."
-                 ),
-                 font=("Helvetica", 9), fg=C_MUTED, bg=C_CARD,
-                 justify="left").pack(anchor="w", pady=(0, 6))
+        # Tooltip legend
+        tk.Label(warn_f,
+                 text="●=OK  ●=warn  ●=error     Pitch=fwd/bwd  Yaw=left/right",
+                 font=("Helvetica", 7), fg=C_MUTED, bg=C_CARD).pack(anchor="w", pady=(2, 0))
 
-        thr_row = tk.Frame(thr_card, bg=C_CARD); thr_row.pack(fill="x")
-        self.tilt_slider = tk.Scale(
-            thr_row, from_=1, to=45, resolution=0.5,
-            orient="horizontal", variable=self.tilt_threshold,
-            bg=C_CARD, fg=C_TEXT, troughcolor=C_BG,
-            activebackground=C_TEAL, length=500,
-            highlightthickness=0)
-        self.tilt_slider.pack(side="left", padx=(0, 10))
-        self.tilt_val_lbl = tk.Label(
-            thr_row,
-            textvariable=self.tilt_threshold,
-            font=("Courier", 13, "bold"), fg=C_TEAL, bg=C_CARD, width=5)
-        self.tilt_val_lbl.pack(side="left")
-        tk.Label(thr_row, text="°", font=("Helvetica", 13), fg=C_TEXT,
-                 bg=C_CARD).pack(side="left")
-
-        # Per-pair warning panels
-        pairs_frame = tk.Frame(outer, bg=C_BG)
-        pairs_frame.pack(fill="both", expand=True)
-
-        self._warn_rows = {}
-        for key, title, col in [("top", "TOP PAIR", C_TOP), ("bottom", "BOTTOM PAIR", C_BOT)]:
-            col_frame = tk.LabelFrame(
-                pairs_frame, text=f"  {title}  ",
-                font=("Helvetica", 11, "bold"), fg=col, bg=C_CARD,
-                bd=1, relief="solid", padx=10, pady=10)
-            col_frame.pack(side="left", fill="both", expand=True, padx=8)
-
-            rows = {}
-
-            # Each warning type: key → (label_text, icon_label, status_label)
-            warn_defs = [
-                ("detect_L",  "Left Marker Detected"),
-                ("detect_R",  "Right Marker Detected"),
-                ("rot",       "In-Plane Rotation"),
-                ("pitch_L",   "Left Marker Pitch  (fwd/bwd tilt)"),
-                ("pitch_R",   "Right Marker Pitch  (fwd/bwd tilt)"),
-                ("yaw_L",     "Left Marker Yaw  (left/right tilt)"),
-                ("yaw_R",     "Right Marker Yaw  (left/right tilt)"),
-                ("depth_diff","Depth Difference (L-R Z)"),
-            ]
-
-            for w_key, w_label in warn_defs:
-                row_f = tk.Frame(col_frame, bg=C_CARD_LT,
-                                 highlightbackground=C_BG, highlightthickness=1)
-                row_f.pack(fill="x", pady=3)
-
-                icon = tk.Label(row_f, text="●", font=("Helvetica", 14),
-                                fg=C_MUTED, bg=C_CARD_LT, width=2)
-                icon.pack(side="left", padx=(6, 2), pady=4)
-
-                tk.Label(row_f, text=w_label, font=("Helvetica", 10),
-                         fg=C_TEXT, bg=C_CARD_LT, anchor="w").pack(
-                    side="left", padx=4, fill="x", expand=True)
-
-                val_lbl = tk.Label(row_f, text="—",
-                                   font=("Courier", 10, "bold"),
-                                   fg=C_MUTED, bg=C_CARD_LT, width=18, anchor="e")
-                val_lbl.pack(side="right", padx=8, pady=4)
-
-                rows[w_key] = (icon, val_lbl)
-
-            # Angle display section
-            ang_f = tk.Frame(col_frame, bg=C_CARD); ang_f.pack(fill="x", pady=(8, 0))
-            tk.Label(ang_f, text="Euler Angles (°)",
-                     font=("Helvetica", 9, "bold"), fg=C_MUTED, bg=C_CARD).pack(anchor="w")
-
-            ang_grid = tk.Frame(ang_f, bg=C_CARD); ang_grid.pack(fill="x")
-            ang_vars = {}
-            for col_idx, (a_key, a_label, a_color) in enumerate([
-                ("L_pitch", "L-Pitch", C_ORANGE),
-                ("L_yaw",   "L-Yaw",   C_BLUE),
-                ("L_roll",  "L-Roll",  C_TEAL),
-                ("R_pitch", "R-Pitch", C_ORANGE),
-                ("R_yaw",   "R-Yaw",   C_BLUE),
-                ("R_roll",  "R-Roll",  C_TEAL),
-            ]):
-                cell = tk.Frame(ang_grid, bg=C_BG, padx=4, pady=4)
-                cell.grid(row=0, column=col_idx, padx=2, pady=2, sticky="nsew")
-                ang_grid.columnconfigure(col_idx, weight=1)
-                tk.Label(cell, text=a_label, font=("Helvetica", 8),
-                         fg=a_color, bg=C_BG).pack()
-                sv = tk.StringVar(value="—")
-                tk.Label(cell, textvariable=sv, font=("Courier", 11, "bold"),
-                         fg=C_WHITE, bg=C_BG).pack()
-                ang_vars[a_key] = sv
-
-            rows["_ang_vars"] = ang_vars
-            self._warn_rows[key] = rows
+        # Lighting row
+        light_row = tk.Frame(warn_f, bg=C_CARD)
+        light_row.pack(fill="x", pady=(4, 0))
+        tk.Label(light_row, text="💡 Lighting:", font=("Helvetica", 9, "bold"),
+                 fg=C_TEXT, bg=C_CARD).pack(side="left")
+        self.lbl_lighting_mv = tk.Label(
+            light_row, text="—", font=("Helvetica", 9, "bold"),
+            fg=C_MUTED, bg=C_CARD)
+        self.lbl_lighting_mv.pack(side="left", padx=6)
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  TAB 3 — DUAL TELEMETRY
+    #  TAB 2: DUAL TELEMETRY  (v14 + L_PITCH, L_YAW, R_PITCH, R_YAW rows)
     # ══════════════════════════════════════════════════════════════════════════
     def _build_tab_tele(self):
         tab = ttk.Frame(self.tabs)
-        self.tabs.add(tab, text="  🛸  Dual Telemetry  ")
-        mtf = tk.Frame(tab, bg=C_PANEL); mtf.pack(fill="both", expand=True)
-
+        self.tabs.add(tab, text=" 🛸  Dual Telemetry ")
+        mtf = tk.Frame(tab, bg="#ecf0f1")
+        mtf.pack(fill="both", expand=True)
         self.tele_vars = {"top": {}, "bottom": {}}
         v_show = ["A", "X", "TR", "BR", "B", "C",
                   "L_ROL", "L_ROT", "L_Z", "L_PITCH", "L_YAW",
                   "R_ROL", "R_ROT", "R_Z", "R_PITCH", "R_YAW"]
-
         for key, title, col in [("top", "TOP", C_TOP), ("bottom", "BOTTOM", C_BOT)]:
-            cf = tk.LabelFrame(mtf, text=f"  {title} DATA  ",
-                               font=("Helvetica", 12, "bold"), fg=col, bg=C_PANEL)
+            cf = tk.LabelFrame(mtf, text=f" {title} DATA ",
+                               font=("Helvetica", 12, "bold"), fg=col, bg="#ecf0f1")
             cf.pack(side="left", fill="both", expand=True, padx=10, pady=10)
-
             for v_name in v_show:
-                row = tk.Frame(cf, bg=C_CARD,
-                               highlightbackground=C_BG, highlightthickness=1)
-                row.pack(fill="x", padx=10, pady=2)
+                row = tk.Frame(cf, bg="white",
+                               highlightbackground="#bdc3c7", highlightthickness=1)
+                row.pack(fill="x", padx=10, pady=3)
                 tk.Label(row, text=v_name, font=("Helvetica", 9),
-                         fg=C_MUTED, bg=C_CARD, width=10, anchor="w").pack(
-                    side="left", padx=5)
+                         bg="white").pack(side="left", padx=5)
                 sv = tk.StringVar(value="—")
                 tk.Label(row, textvariable=sv, font=("Courier", 10),
-                         fg=C_TEXT, bg=C_CARD).pack(side="right", padx=5)
+                         bg="white").pack(side="right", padx=5)
                 self.tele_vars[key][v_name] = sv
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  TAB 4 — MACHINE CONFIGURATION
+    #  TAB 3: MACHINE CONFIGURATION
+    #  v14-identical + Pitch Threshold + Yaw Threshold sliders
     # ══════════════════════════════════════════════════════════════════════════
     def _build_tab_settings(self):
         tab = ttk.Frame(self.tabs)
-        self.tabs.add(tab, text="  ⚙  Machine Config  ")
-        sc = tk.Frame(tab, bg=C_PANEL); sc.pack(fill="both", expand=True, padx=60, pady=30)
+        self.tabs.add(tab, text=" ⚙  Machine Configuration ")
+        sc = tk.Frame(tab, bg="#ecf0f1")
+        sc.pack(fill="both", expand=True, padx=80, pady=40)
 
-        rf = tk.LabelFrame(sc, text="  Reference Side (Fixed ArUco)  ", bg=C_CARD,
-                           fg=C_TEXT, font=("Helvetica", 11, "bold"), padx=20, pady=10)
+        rf = tk.LabelFrame(sc, text=" Reference Side (Fixed ArUco) ", bg="white",
+                           font=("Helvetica", 11, "bold"), padx=20, pady=10)
         rf.pack(fill="x", pady=(0, 12))
         for choice in ["Left", "Right"]:
             tk.Radiobutton(rf, text=choice, variable=self.fixed_side,
-                           value=choice, bg=C_CARD, fg=C_TEXT, selectcolor=C_BG,
-                           activebackground=C_CARD, activeforeground=C_TEXT,
+                           value=choice, bg="white",
                            font=("Helvetica", 12)).pack(side="left", padx=24)
 
         def create_slider(label, var, color, lo, hi, res=0.1):
-            f = tk.LabelFrame(sc, text=f"  {label}  ", bg=C_CARD,
+            f = tk.LabelFrame(sc, text=f" {label} ", bg="white",
                               font=("Helvetica", 10), fg=color, padx=20, pady=6)
             f.pack(fill="x", pady=6)
             sl = tk.Scale(f, from_=lo, to=hi, resolution=res, orient="horizontal",
-                          variable=var, bg=C_CARD, fg=C_TEXT,
-                          troughcolor=C_BG, activebackground=color,
-                          highlightthickness=0, length=560)
+                          variable=var, bg="white", length=500)
             sl.pack(side="left", padx=16)
-            tk.Entry(f, textvariable=var, width=9, font=("Courier", 10),
-                     bg=C_BG, fg=C_TEXT, insertbackground=C_TEXT).pack(side="left")
+            tk.Entry(f, textvariable=var, width=9,
+                     font=("Courier", 10)).pack(side="left")
             return sl
 
-        create_slider("Upper Pair Marker Size (mm)",   self.size_top,          C_TOP,  10, 200)
-        create_slider("Bottom Pair Marker Size (mm)",  self.size_bot,          C_BOT,  10, 200)
+        create_slider("Upper Pair Marker Size (mm)",  self.size_top, C_TOP,  10, 200)
+        create_slider("Bottom Pair Marker Size (mm)", self.size_bot, C_BOT,  10, 200)
+
         self.rot_threshold_slider = create_slider(
-            "Rotation Threshold °  (perpendicular / fallback)",
-            self.rot_threshold, C_ORANGE, 0, 45)
+            "Rotation Threshold °  (in-plane / formula switch)",
+            self.rot_threshold, C_TEXT, 0, 45)
 
-        # NOTE: Tilt threshold also lives in the Warnings tab for quick access,
-        # but we mirror it here too as a second slider linked to the same variable.
         create_slider(
-            "Tilt Threshold °  (pitch / yaw warning)",
-            self.tilt_threshold, C_TEAL, 1, 45, res=0.5)
+            "Pitch Threshold °  (forward / backward tilt warning)",
+            self.pitch_threshold, "#8e44ad", 1, 45, res=0.5)
 
-        # ── Angle Threshold Toggle ────────────────────────────────────────────
-        tog_f = tk.LabelFrame(sc, text="  Angle Threshold Mode  ", bg=C_CARD,
-                              font=("Helvetica", 10), fg=C_TEXT, padx=20, pady=10)
+        create_slider(
+            "Yaw Threshold °  (left / right tilt  —  'one side in' warning)",
+            self.yaw_threshold, "#16a085", 1, 45, res=0.5)
+
+        # ── Angle-threshold toggle  (v14-identical) ───────────────────────────
+        tog_f = tk.LabelFrame(sc, text=" Angle Threshold Mode ", bg="white",
+                              font=("Helvetica", 10), fg="#2c3e50", padx=20, pady=10)
         tog_f.pack(fill="x", pady=6)
 
         def _update_tog_label(*_):
@@ -535,21 +426,21 @@ class MeasurementApp:
                     fg=C_RED)
                 self.rot_threshold_slider.config(state="disabled")
 
-        tog_row = tk.Frame(tog_f, bg=C_CARD); tog_row.pack(fill="x")
-        self._tog_canvas = tk.Canvas(tog_row, width=56, height=28, bg=C_CARD,
+        tog_row = tk.Frame(tog_f, bg="white"); tog_row.pack(fill="x")
+        self._tog_canvas = tk.Canvas(tog_row, width=56, height=28, bg="white",
                                      highlightthickness=0, cursor="hand2")
         self._tog_canvas.pack(side="left", padx=(0, 12))
-        tog_state_lbl = tk.Label(tog_row, text="", font=("Helvetica", 10),
-                                 bg=C_CARD, fg=C_TEXT, anchor="w")
+        tog_state_lbl = tk.Label(tog_row, text="",
+                                 font=("Helvetica", 10), bg="white", anchor="w")
         tog_state_lbl.pack(side="left", fill="x", expand=True)
 
         def _draw_toggle():
             self._tog_canvas.delete("all")
             on = self.use_angle_thresh.get()
-            bg = C_GREEN if on else C_MUTED
+            bg = C_GREEN if on else "#b2bec3"
             self._tog_canvas.create_oval(2, 2, 54, 26, fill=bg, outline="")
             cx = 38 if on else 18
-            self._tog_canvas.create_oval(cx-12, 4, cx+12, 24, fill=C_WHITE, outline="")
+            self._tog_canvas.create_oval(cx-12, 4, cx+12, 24, fill="white", outline="")
 
         def _toggle_click(_=None):
             self.use_angle_thresh.set(not self.use_angle_thresh.get())
@@ -559,72 +450,75 @@ class MeasurementApp:
         _draw_toggle(); _update_tog_label()
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  TAB 5 — CAMERA CONTROLS
+    #  TAB 4: CAMERA CONTROLS  (v14-identical + lighting label)
     # ══════════════════════════════════════════════════════════════════════════
     def _build_tab_cam(self):
         tab = ttk.Frame(self.tabs)
-        self.tabs.add(tab, text="  📷  Camera  ")
+        self.tabs.add(tab, text=" 📷  Camera Controls ")
 
-        cam_left  = tk.Frame(tab, bg="#0a1520")
+        cam_left  = tk.Frame(tab, bg="#1a252f")
         cam_left.pack(side="left", fill="both", expand=True, padx=8, pady=8)
-        cam_right = tk.Frame(tab, bg=C_PANEL)
+        cam_right = tk.Frame(tab, bg="#ecf0f1")
         cam_right.pack(side="right", fill="y", padx=8, pady=8, ipadx=4)
 
         tk.Label(cam_left, text="Live Camera Preview",
-                 font=("Helvetica", 11, "bold"), fg=C_TEXT, bg="#0a1520").pack(pady=(8, 0))
+                 font=("Helvetica", 11, "bold"), fg="#ecf0f1",
+                 bg="#1a252f").pack(pady=(8, 0))
         self.cam_canvas = tk.Canvas(cam_left, width=800, height=480, bg="black",
-                                    highlightthickness=2, highlightbackground=C_BLUE)
+                                    highlightthickness=1, highlightbackground=C_MUTED)
         self.cam_canvas.pack(padx=10, pady=10)
         self.lbl_cam_status = tk.Label(cam_left, text="⏳ Waiting for camera…",
                                        font=("Helvetica", 11, "bold"),
-                                       fg="#f39c12", bg="#0a1520")
+                                       fg="#f39c12", bg="#1a252f")
         self.lbl_cam_status.pack(pady=4)
+        # NEW: lighting status in camera tab
+        self.lbl_lighting_cam = tk.Label(cam_left, text="",
+                                         font=("Helvetica", 10, "bold"),
+                                         fg=C_MUTED, bg="#1a252f")
+        self.lbl_lighting_cam.pack(pady=2)
 
         tk.Label(cam_right, text="Camera Settings",
                  font=("Helvetica", 13, "bold"), fg=C_TEXT,
-                 bg=C_PANEL).pack(pady=(10, 4))
+                 bg="#ecf0f1").pack(pady=(10, 4))
 
         def cam_row(label, var, lo, hi, res, unit=""):
-            rf = tk.LabelFrame(cam_right, text=f"  {label}  ", bg=C_CARD,
-                               font=("Helvetica", 9), fg=C_MUTED, padx=8, pady=4)
+            rf = tk.LabelFrame(cam_right, text=f" {label} ", bg="white",
+                               font=("Helvetica", 9), padx=8, pady=4)
             rf.pack(fill="x", padx=6, pady=3)
-            inner = tk.Frame(rf, bg=C_CARD); inner.pack(fill="x")
+            inner = tk.Frame(rf, bg="white"); inner.pack(fill="x")
             tk.Scale(inner, from_=lo, to=hi, resolution=res,
-                     orient="horizontal", variable=var, bg=C_CARD, fg=C_TEXT,
-                     troughcolor=C_BG, highlightthickness=0,
-                     length=240, command=lambda _: self._apply_cam()).pack(side="left")
-            tk.Entry(inner, textvariable=var, width=7, font=("Courier", 9),
-                     bg=C_BG, fg=C_TEXT, insertbackground=C_TEXT).pack(side="left", padx=4)
+                     orient="horizontal", variable=var, bg="white",
+                     length=260, command=lambda _: self._apply_cam()).pack(side="left")
+            tk.Entry(inner, textvariable=var, width=7,
+                     font=("Courier", 9)).pack(side="left", padx=4)
             if unit:
-                tk.Label(inner, text=unit, bg=C_CARD, fg=C_MUTED,
-                         font=("Helvetica", 8)).pack(side="left")
+                tk.Label(inner, text=unit, bg="white",
+                         font=("Helvetica", 8), fg=C_MUTED).pack(side="left")
 
-        ae_f = tk.LabelFrame(cam_right, text="  Auto Exposure  ", bg=C_CARD,
-                             font=("Helvetica", 9), fg=C_MUTED, padx=8, pady=4)
+        ae_f = tk.LabelFrame(cam_right, text=" Auto Exposure ", bg="white",
+                             font=("Helvetica", 9), padx=8, pady=4)
         ae_f.pack(fill="x", padx=6, pady=3)
-        tk.Checkbutton(ae_f, text="Enable Auto Exposure (AE)", variable=self.cam_ae,
-                       bg=C_CARD, fg=C_TEXT, selectcolor=C_BG,
-                       activebackground=C_CARD, activeforeground=C_TEXT,
-                       font=("Helvetica", 10), command=self._apply_cam).pack(anchor="w")
+        tk.Checkbutton(ae_f, text="Enable Auto Exposure (AE)",
+                       variable=self.cam_ae, bg="white",
+                       font=("Helvetica", 10),
+                       command=self._apply_cam).pack(anchor="w")
 
         cam_row("Exposure Time", self.cam_exposure, 100,  66000, 100, "µs")
         cam_row("ISO / Gain",    self.cam_gain,     1.0,  16.0,  0.1, "x")
 
-        awb_f = tk.LabelFrame(cam_right, text="  White Balance  ", bg=C_CARD,
-                              font=("Helvetica", 9), fg=C_MUTED, padx=8, pady=4)
+        awb_f = tk.LabelFrame(cam_right, text=" White Balance ", bg="white",
+                              font=("Helvetica", 9), padx=8, pady=4)
         awb_f.pack(fill="x", padx=6, pady=3)
-        tk.Checkbutton(awb_f, text="Auto White Balance", variable=self.cam_awb,
-                       bg=C_CARD, fg=C_TEXT, selectcolor=C_BG,
-                       activebackground=C_CARD, activeforeground=C_TEXT,
-                       font=("Helvetica", 10), command=self._apply_cam).pack(anchor="w")
-        wbm_row = tk.Frame(awb_f, bg=C_CARD); wbm_row.pack(fill="x", pady=2)
-        tk.Label(wbm_row, text="Mode:", bg=C_CARD, fg=C_TEXT,
+        tk.Checkbutton(awb_f, text="Auto White Balance",
+                       variable=self.cam_awb, bg="white",
+                       font=("Helvetica", 10),
+                       command=self._apply_cam).pack(anchor="w")
+        wbm_row = tk.Frame(awb_f, bg="white"); wbm_row.pack(fill="x", pady=2)
+        tk.Label(wbm_row, text="Mode:", bg="white",
                  font=("Helvetica", 9)).pack(side="left")
         for mode_name in AWB_MODES:
             tk.Radiobutton(wbm_row, text=mode_name, variable=self.cam_awb_mode,
-                           value=mode_name, bg=C_CARD, fg=C_TEXT, selectcolor=C_BG,
-                           activebackground=C_CARD, activeforeground=C_TEXT,
-                           font=("Helvetica", 8),
+                           value=mode_name, bg="white", font=("Helvetica", 8),
                            command=self._apply_cam).pack(side="left", padx=2)
 
         cam_row("Brightness", self.cam_brightness, -1.0, 1.0, 0.05)
@@ -633,12 +527,12 @@ class MeasurementApp:
         cam_row("Sharpness",  self.cam_sharpness,   0.0, 8.0, 0.1)
 
         tk.Button(cam_right, text="↺  Reset to Defaults",
-                  font=("Helvetica", 10, "bold"), bg=C_RED, fg=C_WHITE,
-                  activebackground="#c62828", relief="flat", padx=10, pady=6,
+                  font=("Helvetica", 10, "bold"), bg=C_RED, fg="white",
+                  activebackground="#c0392b", relief="flat", padx=10, pady=6,
                   command=self._reset_cam).pack(pady=10, fill="x", padx=6)
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  Movement Monitor
+    #  Movement monitor logic  (v14-identical)
     # ══════════════════════════════════════════════════════════════════════════
     def _mv_start(self):
         if self.mv_state not in ("idle", "done"):
@@ -650,7 +544,7 @@ class MeasurementApp:
         self.mv_prog_bar["value"] = 0
         self.mv_status_lbl.config(
             text=f"⏳  Collecting initial distance…  (0 / {COLLECT_N})",
-            fg=C_YELLOW)
+            fg="#f39c12")
 
     def _mv_stop(self):
         if self.mv_state != "ready":
@@ -661,7 +555,7 @@ class MeasurementApp:
         self.mv_prog_bar["value"] = 0
         self.mv_status_lbl.config(
             text=f"⏳  Collecting final distance…  (0 / {COLLECT_N})",
-            fg=C_YELLOW)
+            fg="#f39c12")
 
     def _mv_reset(self):
         self.mv_state      = "idle"
@@ -674,7 +568,7 @@ class MeasurementApp:
         self.mv_prog_bar["value"] = 0
         self.mv_prog_lbl.config(text="")
         self.mv_status_lbl.config(
-            text="Press  START  to capture initial gap", fg=C_TEXT)
+            text="Press  START  to capture initial gap", fg="#dfe6e9")
         self.mv_init_lbl_top.config(text="Init: —",   fg=C_MUTED)
         self.mv_init_lbl_bot.config(text="Init: —",   fg=C_MUTED)
         self.mv_final_lbl_top.config(text="Final: —", fg=C_MUTED)
@@ -698,7 +592,7 @@ class MeasurementApp:
             self.mv_prog_lbl.config(text=f"Reading {n} / {COLLECT_N}")
             self.mv_status_lbl.config(
                 text=f"⏳  Collecting initial distance…  ({n} / {COLLECT_N})",
-                fg=C_YELLOW)
+                fg="#f39c12")
             if n >= COLLECT_N:
                 self.mv_dist_init = {
                     "top":    float(np.mean(self.mv_init_buf["top"][:COLLECT_N])),
@@ -726,7 +620,7 @@ class MeasurementApp:
             self.mv_prog_lbl.config(text=f"Reading {n} / {COLLECT_N}")
             self.mv_status_lbl.config(
                 text=f"⏳  Collecting final distance…  ({n} / {COLLECT_N})",
-                fg=C_YELLOW)
+                fg="#f39c12")
             if n >= COLLECT_N:
                 self.mv_dist_final = {
                     "top":    float(np.mean(self.mv_final_buf["top"][:COLLECT_N])),
@@ -739,33 +633,30 @@ class MeasurementApp:
                 self.mv_status_lbl.config(
                     text="✅  Measurement complete — press RESET to start over",
                     fg=C_GREEN)
-                for key, init_lbl, final_lbl, delta_lbl in [
-                    ("top",    self.mv_init_lbl_top, self.mv_final_lbl_top, self.mv_delta_lbl_top),
-                    ("bottom", self.mv_init_lbl_bot, self.mv_final_lbl_bot, self.mv_delta_lbl_bot),
+                for key, il, fl, dl in [
+                    ("top",    self.mv_init_lbl_top,  self.mv_final_lbl_top,  self.mv_delta_lbl_top),
+                    ("bottom", self.mv_init_lbl_bot,  self.mv_final_lbl_bot,  self.mv_delta_lbl_bot),
                 ]:
-                    di = self.mv_dist_init[key]
-                    df = self.mv_dist_final[key]
+                    di = self.mv_dist_init[key]; df = self.mv_dist_final[key]
                     delta = df - di
-                    init_lbl.config(text=f"Init: {di:.3f} mm",  fg=C_TEXT)
-                    final_lbl.config(text=f"Final: {df:.3f} mm", fg=C_TEXT)
+                    il.config(text=f"Init: {di:.3f} mm",   fg=C_TEXT)
+                    fl.config(text=f"Final: {df:.3f} mm",  fg=C_TEXT)
                     sign  = "+" if delta >= 0 else ""
                     color = C_RED if delta > 0.5 else (C_GREEN if delta < -0.5 else C_BLUE)
-                    delta_lbl.config(text=f"{sign}{delta:.3f} mm", fg=color)
+                    dl.config(text=f"{sign}{delta:.3f} mm", fg=color)
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  Camera control helpers
+    #  Camera control helpers  (v14-identical)
     # ══════════════════════════════════════════════════════════════════════════
     def _apply_cam(self, *_):
         if self.pc is None:
             return
         controls = {}
-        ae_on = self.cam_ae.get()
-        controls["AeEnable"] = ae_on
+        ae_on = self.cam_ae.get(); controls["AeEnable"] = ae_on
         if not ae_on:
             controls["ExposureTime"] = int(self.cam_exposure.get())
             controls["AnalogueGain"] = float(self.cam_gain.get())
-        awb_on = self.cam_awb.get()
-        controls["AwbEnable"] = awb_on
+        awb_on = self.cam_awb.get(); controls["AwbEnable"] = awb_on
         if not awb_on:
             controls["AwbMode"] = AWB_MODES.get(self.cam_awb_mode.get(), 0)
         controls["Brightness"]  = float(self.cam_brightness.get())
@@ -785,7 +676,7 @@ class MeasurementApp:
         self.cam_sharpness.set(1.0);  self._apply_cam()
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  Calibration
+    #  Calibration  (v14-identical)
     # ══════════════════════════════════════════════════════════════════════════
     def load_calib(self):
         f = "camera_params_2.npz" if self.fixed_side.get() == "Right" else "camera_params.npz"
@@ -796,7 +687,7 @@ class MeasurementApp:
                 np.zeros(5))
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  Measurement loop (runs in background thread)
+    #  Measurement loop  (background thread)
     # ══════════════════════════════════════════════════════════════════════════
     def measurement_loop(self):
         try:
@@ -823,8 +714,26 @@ class MeasurementApp:
             except Exception:
                 continue
 
-            corners_raw, ids, _ = detector.detectMarkers(
-                cv.cvtColor(frame, cv.COLOR_BGR2GRAY))
+            # ── Lighting analysis (every frame, very cheap) ───────────────────
+            gray_full = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+            mean_b = float(np.mean(gray_full))
+            std_b  = float(np.std(gray_full))
+            if mean_b < LIGHT_LOW:
+                light_status = "dark"
+            elif mean_b > LIGHT_HIGH:
+                light_status = "bright"
+            elif std_b < CONTRAST_MIN:
+                light_status = "flat"
+            else:
+                light_status = "ok"
+            self.last_data["lighting"] = {
+                "status": light_status,
+                "mean":   mean_b,
+                "std":    std_b,
+            }
+
+            # ── ArUco detection ───────────────────────────────────────────────
+            corners_raw, ids, _ = detector.detectMarkers(gray_full)
             curr = time.time() * 1000
 
             if ids is not None and len(ids) >= 1:
@@ -855,17 +764,17 @@ class MeasurementApp:
                 elif len(m_data) == 3:
                     top_m = m_data[:2]; bot_m = m_data[2:]
 
-                # ── proc: geometry + euler angles ─────────────────────────────
-                def proc(marker_list, key, size):
+                # ── proc: pose + euler angles ─────────────────────────────────
+                def proc(marker_list, pair_key, size):
                     if len(marker_list) < 2:
-                        self.last_data[key]["dist"]       = 0.0
-                        self.last_data[key]["p1_px"]      = None
-                        self.last_data[key]["L_detected"] = False
-                        self.last_data[key]["R_detected"] = False
+                        self.last_data[pair_key]["dist"]  = 0.0
+                        self.last_data[pair_key]["p1_px"] = None
+                        self.last_data[pair_key]["L_det"] = False
+                        self.last_data[pair_key]["R_det"] = False
                         return
 
                     marker_list.sort(key=lambda m: m["x"])
-                    left_m  = marker_list[0]; right_m = marker_list[-1]
+                    left_m  = marker_list[0];  right_m = marker_list[-1]
                     is_rf   = (self.fixed_side.get() == "Right")
                     S_m = right_m if is_rf else left_m
                     T_m = left_m  if is_rf else right_m
@@ -877,19 +786,21 @@ class MeasurementApp:
                         _, rv, tv = cv.solvePnP(obj, c_raw, K, dist_c)
                         R, _ = cv.Rodrigues(rv)
                         pts3d = np.array([R @ pt + tv.ravel() for pt in obj])
-                        pitch, yaw, roll = rotation_to_euler(R)
-                        irot  = abs(inplane_rot_deg(
-                            np.array([c_raw[np.argsort(c_raw[:, 0])[:2]],
-                                      c_raw[np.argsort(c_raw[:, 0])[2:]]]).reshape(-1, 2)))
-                        return pts3d, roll, float(tv[2]), pitch, yaw
+                        # roll estimate matching v14
+                        roll_r = math.degrees(math.atan2(R[1, 0], R[0, 0]))
+                        # full euler decomposition
+                        pitch, yaw, _ = rotation_to_euler(R)
+                        return pts3d, roll_r, float(tv[2]), pitch, yaw
 
-                    def get_irot(c_sorted):
-                        return abs(inplane_rot_deg(c_sorted))
+                    def inplane_rot(c_sorted):
+                        return abs(math.degrees(math.atan2(
+                            c_sorted[1, 1] - c_sorted[0, 1],
+                            c_sorted[1, 0] - c_sorted[0, 0])))
 
                     S_pts, S_roll, S_z, S_pitch, S_yaw = get_pose(S_m["c_raw"])
                     T_pts, T_roll, T_z, T_pitch, T_yaw = get_pose(T_m["c_raw"])
-                    S_irot = get_irot(S_m["c"])
-                    T_irot = get_irot(T_m["c"])
+                    S_irot = inplane_rot(S_m["c"])
+                    T_irot = inplane_rot(T_m["c"])
 
                     def inner_outer(pts, inner_is_right):
                         order = pts[:, 0].argsort()
@@ -900,9 +811,9 @@ class MeasurementApp:
                         return inner[0], inner[1], outer[0]
 
                     S_inner_top, S_inner_bot, S_outer_top = inner_outer(S_pts, not is_rf)
-                    A = (S_inner_top + S_inner_bot) / 2.0
+                    A  = (S_inner_top + S_inner_bot) / 2.0
                     T_inner_top, T_inner_bot, _ = inner_outer(T_pts, is_rf)
-                    B = T_inner_top; C_ = T_inner_bot; X_alt = (B + C_) / 2.0
+                    Bv = T_inner_top; Cv = T_inner_bot; X_alt = (Bv + Cv) / 2.0
 
                     if not is_rf:
                         p_src_2d = tuple(((S_m["c"][1]+S_m["c"][2])/2).astype(int))
@@ -911,53 +822,52 @@ class MeasurementApp:
                         p_src_2d = tuple(((S_m["c"][0]+S_m["c"][3])/2).astype(int))
                         p_tgt_2d = tuple(((T_m["c"][1]+T_m["c"][2])/2).astype(int))
 
-                    buffers[key].append({
+                    buffers[pair_key].append({
                         "A": A, "X_alt": X_alt,
                         "TR": S_inner_top, "BR": S_inner_bot, "TL_ref": S_outer_top,
-                        "B": B, "C": C_,
-                        "L_A":    (S_roll, S_irot),
-                        "R_A":    (T_roll, T_irot),
-                        "rot":    max(S_irot, T_irot),
-                        "L_z":    S_z, "R_z": T_z,
+                        "B": Bv, "C": Cv,
+                        "L_A": (S_roll, S_irot), "R_A": (T_roll, T_irot),
+                        "rot": max(S_irot, T_irot),
+                        "L_z": S_z, "R_z": T_z,
                         "L_pitch": S_pitch, "L_yaw": S_yaw,
                         "R_pitch": T_pitch, "R_yaw": T_yaw,
-                        "p1_px":  p_src_2d, "p2_px": p_tgt_2d,
+                        "p1_px": p_src_2d, "p2_px": p_tgt_2d,
                     })
-                    self.last_data[key]["L_detected"] = True
-                    self.last_data[key]["R_detected"] = True
+                    self.last_data[pair_key]["L_det"] = True
+                    self.last_data[pair_key]["R_det"] = True
 
                 if (curr - l_s) >= 100:
                     proc(top_m, "top",    self.size_top.get())
                     proc(bot_m, "bottom", self.size_bot.get())
                     l_s = curr
 
-                # ── 1s averaging window ───────────────────────────────────────
+                # ── 1-second averaging window (v14-identical + new fields) ──
                 if (curr - l_u) >= 1000:
                     for key in ["top", "bottom"]:
                         if buffers[key]:
                             s = buffers[key]
-                            aA     = np.mean([x["A"]       for x in s], axis=0)
-                            aTR    = np.mean([x["TR"]      for x in s], axis=0)
-                            aTL    = np.mean([x["TL_ref"]  for x in s], axis=0)
-                            aBR    = np.mean([x["BR"]      for x in s], axis=0)
-                            aB     = np.mean([x["B"]       for x in s], axis=0)
-                            aC     = np.mean([x["C"]       for x in s], axis=0)
-                            aX_alt = np.mean([x["X_alt"]   for x in s], axis=0)
-                            aL     = np.mean([x["L_A"]     for x in s], axis=0)
-                            aR     = np.mean([x["R_A"]     for x in s], axis=0)
-                            avg_rot   = float(np.mean([x["rot"]     for x in s]))
-                            avg_Lz    = float(np.mean([x["L_z"]     for x in s]))
-                            avg_Rz    = float(np.mean([x["R_z"]     for x in s]))
+                            aA      = np.mean([x["A"]       for x in s], axis=0)
+                            aTR     = np.mean([x["TR"]      for x in s], axis=0)
+                            aTL     = np.mean([x["TL_ref"]  for x in s], axis=0)
+                            aBR     = np.mean([x["BR"]      for x in s], axis=0)
+                            aB      = np.mean([x["B"]       for x in s], axis=0)
+                            aC      = np.mean([x["C"]       for x in s], axis=0)
+                            aX_alt  = np.mean([x["X_alt"]   for x in s], axis=0)
+                            aL      = np.mean([x["L_A"]     for x in s], axis=0)
+                            aR      = np.mean([x["R_A"]     for x in s], axis=0)
+                            avg_rot    = float(np.mean([x["rot"]     for x in s]))
+                            avg_Lz     = float(np.mean([x["L_z"]     for x in s]))
+                            avg_Rz     = float(np.mean([x["R_z"]     for x in s]))
                             avg_Lpitch = float(np.mean([x["L_pitch"] for x in s]))
-                            avg_Lyaw   = float(np.mean([x["L_yaw"]  for x in s]))
+                            avg_Lyaw   = float(np.mean([x["L_yaw"]   for x in s]))
                             avg_Rpitch = float(np.mean([x["R_pitch"] for x in s]))
-                            avg_Ryaw   = float(np.mean([x["R_yaw"]  for x in s]))
+                            avg_Ryaw   = float(np.mean([x["R_yaw"]   for x in s]))
                             p1_px = tuple(np.mean([x["p1_px"] for x in s],
                                                   axis=0).astype(int))
                             p2_px = tuple(np.mean([x["p2_px"] for x in s],
                                                   axis=0).astype(int))
 
-                            # ── Distance formula ──────────────────────────────
+                            # ── Distance formula (v14-identical) ─────────────
                             v_raw = aTR - aTL
                             v_len = np.linalg.norm(v_raw)
                             v = v_raw / v_len if v_len > 0 else np.zeros(3)
@@ -996,7 +906,7 @@ class MeasurementApp:
                             self.last_data["session_count"] += 1
                             buffers[key].clear()
 
-                            # CSV / DB log
+                            # CSV + DB (v14-identical)
                             v_vec = aTR - aTL; u_vec = aA; w_vec = aC - aB
                             try:
                                 log.record(dv, kv, aA, aX, aTR, aBR, aB, aC,
@@ -1004,7 +914,7 @@ class MeasurementApp:
                             except Exception:
                                 pass
 
-                            # Image during movement capture
+                            # Image capture during movement phase
                             if self.mv_state in ("collecting_init", "ready",
                                                  "collecting_final"):
                                 try:
@@ -1018,13 +928,13 @@ class MeasurementApp:
                     l_u = curr
 
             else:
-                # No markers detected
+                # No markers at all
                 for key in ["top", "bottom"]:
-                    self.last_data[key]["dist"]       = 0.0
-                    self.last_data[key]["L_detected"] = False
-                    self.last_data[key]["R_detected"] = False
+                    self.last_data[key]["dist"]  = 0.0
+                    self.last_data[key]["L_det"] = False
+                    self.last_data[key]["R_det"] = False
 
-            # ── Draw overlay on frame ─────────────────────────────────────────
+            # ── Draw measurement lines + warning overlays on frame ────────────
             for key, color in [("top", (0, 165, 255)), ("bottom", (255, 0, 255))]:
                 d = self.last_data[key]
                 if (d["dist"] > 0
@@ -1038,44 +948,41 @@ class MeasurementApp:
                         p2 = tuple(p_proj[0].ravel().astype(int))
                     else:
                         p2 = d["p2_px"]
-
                     cv.line(frame, p1, p2, color, 3)
                     cv.circle(frame, p2, 6, (0, 255, 0), -1)
                     cv.putText(frame, f"{key.upper()}: {d['dist']:.2f}mm",
                                (p1[0], p1[1]-12), 0, 0.6, color, 2)
 
-                    # ── Tilt / rotation overlays on frame ────────────────────
-                    tilt_th = self.tilt_threshold.get()
-                    warnlines = []
+                    # Warning badge lines
+                    p_th = self.pitch_threshold.get()
+                    y_th = self.yaw_threshold.get()
+                    r_th = self.rot_threshold.get()
+                    wlines = []
                     max_rot = max(d["L_A"][1], d["R_A"][1])
-                    if max_rot > self.rot_threshold.get():
-                        warnlines.append(f"ROT:{max_rot:.1f}°")
-                    if abs(d.get("L_pitch", 0)) > tilt_th:
-                        dir_ = "FWD" if d["L_pitch"] > 0 else "BWD"
-                        warnlines.append(f"L-PITCH:{d['L_pitch']:.1f}°({dir_})")
-                    if abs(d.get("R_pitch", 0)) > tilt_th:
-                        dir_ = "FWD" if d["R_pitch"] > 0 else "BWD"
-                        warnlines.append(f"R-PITCH:{d['R_pitch']:.1f}°({dir_})")
-                    if abs(d.get("L_yaw", 0)) > tilt_th:
-                        dir_ = "RIGHT" if d["L_yaw"] > 0 else "LEFT"
-                        warnlines.append(f"L-YAW:{d['L_yaw']:.1f}°({dir_})")
-                    if abs(d.get("R_yaw", 0)) > tilt_th:
-                        dir_ = "RIGHT" if d["R_yaw"] > 0 else "LEFT"
-                        warnlines.append(f"R-YAW:{d['R_yaw']:.1f}°({dir_})")
-
-                    if warnlines:
-                        box_x1 = p1[0] - 5
-                        box_y1 = p1[1] - 90
-                        box_x2 = p1[0] + 200
-                        box_y2 = p1[1] - 50 + 20 * len(warnlines)
-                        cv.rectangle(frame, (box_x1, box_y1), (box_x2, box_y2),
-                                     (0, 0, 0), -1)
-                        cv.rectangle(frame, (box_x1, box_y1), (box_x2, box_y2),
-                                     (0, 0, 220), 2)
-                        for li, wl in enumerate(warnlines):
+                    if max_rot > r_th:
+                        wlines.append(f"ROT {max_rot:.1f}deg")
+                    lp = d.get("L_pitch", 0.0)
+                    if abs(lp) > p_th:
+                        wlines.append(f"L-PITCH {lp:+.1f}d {'FWD' if lp>0 else 'BWD'}")
+                    rp = d.get("R_pitch", 0.0)
+                    if abs(rp) > p_th:
+                        wlines.append(f"R-PITCH {rp:+.1f}d {'FWD' if rp>0 else 'BWD'}")
+                    ly = d.get("L_yaw", 0.0)
+                    if abs(ly) > y_th:
+                        wlines.append(f"L-YAW {ly:+.1f}d {'R' if ly>0 else 'L'}")
+                    ry = d.get("R_yaw", 0.0)
+                    if abs(ry) > y_th:
+                        wlines.append(f"R-YAW {ry:+.1f}d {'R' if ry>0 else 'L'}")
+                    if wlines:
+                        bx1 = max(0, p1[0] - 5)
+                        by1 = max(0, p1[1] - 30 - 22 * len(wlines))
+                        bx2 = bx1 + 238; by2 = by1 + 22 * len(wlines) + 6
+                        cv.rectangle(frame, (bx1, by1), (bx2, by2), (20, 20, 20), -1)
+                        cv.rectangle(frame, (bx1, by1), (bx2, by2), (0, 30, 180), 2)
+                        for li, wl in enumerate(wlines):
                             cv.putText(frame, wl,
-                                       (box_x1 + 4, box_y1 + 18 + li * 20),
-                                       cv.FONT_HERSHEY_SIMPLEX, 0.48,
+                                       (bx1 + 4, by1 + 17 + li * 22),
+                                       cv.FONT_HERSHEY_SIMPLEX, 0.46,
                                        (0, 220, 255), 1)
 
             rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
@@ -1083,158 +990,101 @@ class MeasurementApp:
             self._cam_preview_frame = rgb
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  Warning computation (GUI thread)
+    #  Warning widget update  (GUI thread, called every 50 ms)
     # ══════════════════════════════════════════════════════════════════════════
-    def _compute_warnings(self):
-        """
-        Build and push all warning rows to the Warnings tab and the strip label.
-        Called every GUI tick.
-        """
-        tilt_th = self.tilt_threshold.get()
-        rot_th  = self.rot_threshold.get()
-        any_error = False
-        any_warn  = False
+    def _update_warnings(self):
+        p_th = self.pitch_threshold.get()
+        y_th = self.yaw_threshold.get()
+        r_th = self.rot_threshold.get()
         strip_parts = []
 
         for key in ["top", "bottom"]:
-            d = self.last_data[key]
-            rows = self._warn_rows[key]
-            ang  = rows["_ang_vars"]
+            d    = self.last_data[key]
+            dots = self.warn_dots[key]
 
-            # ── Helper to set icon + value label ────────────────────────────
-            def set_row(w_key, colour, text):
-                icon_lbl, val_lbl = rows[w_key]
-                icon_lbl.config(fg=colour)
-                val_lbl.config(text=text, fg=colour)
-
-            # 1. Detection
-            l_det = d.get("L_detected", False)
-            r_det = d.get("R_detected", False)
-            set_row("detect_L",
-                    W_OK if l_det else W_ERROR,
-                    "✔ OK" if l_det else "✘ NOT FOUND")
-            set_row("detect_R",
-                    W_OK if r_det else W_ERROR,
-                    "✔ OK" if r_det else "✘ NOT FOUND")
+            # Detection
+            l_det = d.get("L_det", False)
+            r_det = d.get("R_det", False)
+            dots["L_det"].config(fg=C_GREEN if l_det else C_RED)
+            dots["R_det"].config(fg=C_GREEN if r_det else C_RED)
             if not l_det:
-                strip_parts.append(f"[{key.upper()}] Left marker not detected")
-                any_error = True
+                strip_parts.append(f"[{key.upper()}] L-marker not detected")
             if not r_det:
-                strip_parts.append(f"[{key.upper()}] Right marker not detected")
-                any_error = True
+                strip_parts.append(f"[{key.upper()}] R-marker not detected")
 
-            # 2. In-plane rotation
-            rot = d.get("rot_2d", 0.0)
-            rot_ok = rot <= rot_th
-            set_row("rot",
-                    W_OK if rot_ok else W_WARN,
-                    f"{rot:.1f}° {'✔' if rot_ok else '⚠ ROTATED'}")
+            # In-plane rotation
+            rot    = d.get("rot_2d", 0.0)
+            rot_ok = rot <= r_th
+            dots["rot"].config(fg=C_GREEN if rot_ok else C_AMBER)
             if not rot_ok:
-                strip_parts.append(f"[{key.upper()}] In-plane rotation {rot:.1f}° > {rot_th}°")
-                any_warn = True
+                strip_parts.append(f"[{key.upper()}] Rotation {rot:.1f}°")
 
-            # 3. Left marker pitch (forward / backward tilt)
-            lp = d.get("L_pitch", 0.0)
-            lp_abs = abs(lp)
-            lp_dir = "fwd" if lp > 0 else "bwd"
-            lp_ok  = lp_abs <= tilt_th
-            set_row("pitch_L",
-                    W_OK if lp_ok else W_ERROR,
-                    f"{lp:.1f}° {'✔' if lp_ok else ('⚠ TILTED ' + lp_dir.upper())}")
-            if not lp_ok:
+            # Pitch (forward / backward tilt)
+            lp     = d.get("L_pitch", 0.0)
+            rp     = d.get("R_pitch", 0.0)
+            p_ok   = abs(lp) <= p_th and abs(rp) <= p_th
+            dots["pitch"].config(fg=C_GREEN if p_ok else C_RED)
+            if abs(lp) > p_th:
                 strip_parts.append(
-                    f"[{key.upper()}] Left pitch {lp:.1f}° ({lp_dir}) > {tilt_th}°")
-                any_error = True
-
-            # 4. Right marker pitch
-            rp = d.get("R_pitch", 0.0)
-            rp_abs = abs(rp)
-            rp_dir = "fwd" if rp > 0 else "bwd"
-            rp_ok  = rp_abs <= tilt_th
-            set_row("pitch_R",
-                    W_OK if rp_ok else W_ERROR,
-                    f"{rp:.1f}° {'✔' if rp_ok else ('⚠ TILTED ' + rp_dir.upper())}")
-            if not rp_ok:
+                    f"[{key.upper()}] L-pitch {lp:+.1f}° ({'FWD' if lp>0 else 'BWD'})")
+            if abs(rp) > p_th:
                 strip_parts.append(
-                    f"[{key.upper()}] Right pitch {rp:.1f}° ({rp_dir}) > {tilt_th}°")
-                any_error = True
+                    f"[{key.upper()}] R-pitch {rp:+.1f}° ({'FWD' if rp>0 else 'BWD'})")
 
-            # 5. Left marker yaw (left / right tilt)
-            ly = d.get("L_yaw", 0.0)
-            ly_abs = abs(ly)
-            ly_dir = "right" if ly > 0 else "left"
-            ly_ok  = ly_abs <= tilt_th
-            set_row("yaw_L",
-                    W_OK if ly_ok else W_ERROR,
-                    f"{ly:.1f}° {'✔' if ly_ok else ('⚠ TILTED ' + ly_dir.upper())}")
-            if not ly_ok:
+            # Yaw (left / right tilt — "one side in")
+            ly   = d.get("L_yaw", 0.0)
+            ry   = d.get("R_yaw", 0.0)
+            y_ok = abs(ly) <= y_th and abs(ry) <= y_th
+            dots["yaw"].config(fg=C_GREEN if y_ok else C_RED)
+            if abs(ly) > y_th:
                 strip_parts.append(
-                    f"[{key.upper()}] Left yaw {ly:.1f}° ({ly_dir}) > {tilt_th}°")
-                any_error = True
-
-            # 6. Right marker yaw
-            ry = d.get("R_yaw", 0.0)
-            ry_abs = abs(ry)
-            ry_dir = "right" if ry > 0 else "left"
-            ry_ok  = ry_abs <= tilt_th
-            set_row("yaw_R",
-                    W_OK if ry_ok else W_ERROR,
-                    f"{ry:.1f}° {'✔' if ry_ok else ('⚠ TILTED ' + ry_dir.upper())}")
-            if not ry_ok:
+                    f"[{key.upper()}] L-yaw {ly:+.1f}° ({'RIGHT' if ly>0 else 'LEFT'})")
+            if abs(ry) > y_th:
                 strip_parts.append(
-                    f"[{key.upper()}] Right yaw {ry:.1f}° ({ry_dir}) > {tilt_th}°")
-                any_error = True
+                    f"[{key.upper()}] R-yaw {ry:+.1f}° ({'RIGHT' if ry>0 else 'LEFT'})")
 
-            # 7. Depth difference L-R
-            lz = d.get("L_z", 0.0); rz = d.get("R_z", 0.0)
-            dz = abs(lz - rz)
-            dz_ok = dz <= 20.0  # fixed 20 mm depth tolerance
-            set_row("depth_diff",
-                    W_OK if dz_ok else W_WARN,
-                    f"ΔZ={dz:.1f}mm {'✔' if dz_ok else '⚠ CHECK'}")
-            if not dz_ok:
-                strip_parts.append(f"[{key.upper()}] Depth diff {dz:.1f}mm > 20mm")
-                any_warn = True
+        # Lighting
+        li   = self.last_data.get("lighting", {})
+        ls   = li.get("status", "no_frame")
+        mean_b = li.get("mean", 0.0)
+        std_b  = li.get("std",  0.0)
 
-            # ── Angle value cells ────────────────────────────────────────────
-            lr = d.get("L_A", (0.0, 0.0))
-            rr = d.get("R_A", (0.0, 0.0))
-            ang["L_pitch"].set(f"{lp:+.1f}")
-            ang["L_yaw"].set(f"{ly:+.1f}")
-            ang["L_roll"].set(f"{lr[0]:+.1f}")
-            ang["R_pitch"].set(f"{rp:+.1f}")
-            ang["R_yaw"].set(f"{ry:+.1f}")
-            ang["R_roll"].set(f"{rr[0]:+.1f}")
-
-        # ── Overall health indicator ─────────────────────────────────────────
-        if any_error:
-            ov_col  = W_ERROR
-            ov_text = "⛔  Issues detected"
-        elif any_warn:
-            ov_col  = W_WARN
-            ov_text = "⚠  Warnings active"
+        if ls == "ok":
+            light_txt = f"OK  (brt={mean_b:.0f}  ctr={std_b:.0f})"
+            light_col = C_GREEN
+        elif ls == "dark":
+            light_txt = f"⚠ TOO DARK  (brt={mean_b:.0f})"
+            light_col = C_RED
+            strip_parts.append(f"Lighting too dark (brt={mean_b:.0f})")
+        elif ls == "bright":
+            light_txt = f"⚠ OVEREXPOSED  (brt={mean_b:.0f})"
+            light_col = C_AMBER
+            strip_parts.append(f"Lighting overexposed (brt={mean_b:.0f})")
+        elif ls == "flat":
+            light_txt = f"⚠ LOW CONTRAST  (ctr={std_b:.0f})"
+            light_col = C_AMBER
+            strip_parts.append(f"Lighting low contrast (ctr={std_b:.0f})")
         else:
-            ov_col  = W_OK
-            ov_text = "✅  All markers healthy"
+            light_txt = "Waiting…"; light_col = C_MUTED
 
-        self.warn_overall_icon.config(fg=ov_col)
-        self.warn_overall_lbl.config(text=ov_text, fg=ov_col)
+        self.lbl_lighting_mv.config(text=light_txt, fg=light_col)
+        self.lbl_lighting_cam.config(text=f"💡 Lighting: {light_txt}", fg=light_col)
 
-        # ── Strip label under camera ─────────────────────────────────────────
+        # Warning strip
         if strip_parts:
             self.warn_strip.config(
                 text="  ⚠  " + "   |   ".join(strip_parts),
-                bg="#3e0a0a", fg=W_ERROR)
+                fg=C_RED, bg="#fdeded")
         else:
             self.warn_strip.config(
-                text="  ✅  All markers OK — no warnings",
-                bg="#0a2e1a", fg=W_OK)
+                text="  ✅  All markers and lighting OK",
+                fg=C_GREEN, bg="#edfded")
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  GUI refresh loop (runs in main thread, every 50 ms)
+    #  GUI refresh loop  (main thread, 50 ms)
     # ══════════════════════════════════════════════════════════════════════════
     def update_gui_loop(self):
-        # Tab 1: live feed
+        # Tab 1: live canvas
         if self.current_frame is not None:
             img = ImageTk.PhotoImage(
                 image=Image.fromarray(self.current_frame).resize((960, 540)))
@@ -1246,26 +1096,27 @@ class MeasurementApp:
         self.lbl_dist_bot.config(text=f"{self.last_data['bottom']['dist']:.3f} mm")
         self.lbl_k_bot.config(text=f"k: {self.last_data['bottom']['k']:.4f}")
 
-        # Tab 3: telemetry
+        # Tab 2: telemetry
         for key in ["top", "bottom"]:
-            d = self.last_data[key]
+            d  = self.last_data[key]
+            tv = self.tele_vars[key]
             for var in ["A", "X", "TR", "BR", "B", "C"]:
                 v = d[var]
-                self.tele_vars[key][var].set(f"{v[0]:.1f}, {v[1]:.1f}, {v[2]:.1f}")
+                tv[var].set(f"{v[0]:.1f}, {v[1]:.1f}, {v[2]:.1f}")
             lr = d.get("L_A", (0.0, 0.0))
             rr = d.get("R_A", (0.0, 0.0))
-            self.tele_vars[key]["L_ROL"].set(f"{lr[0]:.2f}° (roll)")
-            self.tele_vars[key]["L_ROT"].set(f"{lr[1]:.2f}° (in-plane)")
-            self.tele_vars[key]["L_Z"].set(f"{d['L_z']:.1f} mm")
-            self.tele_vars[key]["L_PITCH"].set(f"{d.get('L_pitch', 0.0):.2f}°")
-            self.tele_vars[key]["L_YAW"].set(f"{d.get('L_yaw', 0.0):.2f}°")
-            self.tele_vars[key]["R_ROL"].set(f"{rr[0]:.2f}° (roll)")
-            self.tele_vars[key]["R_ROT"].set(f"{rr[1]:.2f}° (in-plane)")
-            self.tele_vars[key]["R_Z"].set(f"{d['R_z']:.1f} mm")
-            self.tele_vars[key]["R_PITCH"].set(f"{d.get('R_pitch', 0.0):.2f}°")
-            self.tele_vars[key]["R_YAW"].set(f"{d.get('R_yaw', 0.0):.2f}°")
+            tv["L_ROL"].set(f"{lr[0]:.2f}° (roll)")
+            tv["L_ROT"].set(f"{lr[1]:.2f}° (in-plane)")
+            tv["L_Z"].set(f"{d['L_z']:.1f} mm")
+            tv["L_PITCH"].set(f"{d.get('L_pitch', 0.0):+.2f}°")
+            tv["L_YAW"].set(f"{d.get('L_yaw',   0.0):+.2f}°")
+            tv["R_ROL"].set(f"{rr[0]:.2f}° (roll)")
+            tv["R_ROT"].set(f"{rr[1]:.2f}° (in-plane)")
+            tv["R_Z"].set(f"{d['R_z']:.1f} mm")
+            tv["R_PITCH"].set(f"{d.get('R_pitch', 0.0):+.2f}°")
+            tv["R_YAW"].set(f"{d.get('R_yaw',   0.0):+.2f}°")
 
-        # Tab 5: camera preview + detection status
+        # Tab 4: camera preview + detection status
         if self._cam_preview_frame is not None:
             cam_img = ImageTk.PhotoImage(
                 image=Image.fromarray(self._cam_preview_frame).resize((800, 480)))
@@ -1278,7 +1129,7 @@ class MeasurementApp:
             elif top_ok or bot_ok:
                 self.lbl_cam_status.config(
                     text=f"⚠️  Only {'TOP' if top_ok else 'BOTTOM'} pair detected",
-                    fg=C_YELLOW)
+                    fg="#f39c12")
             else:
                 self.lbl_cam_status.config(
                     text="❌ No ArUco detected — adjust camera settings", fg=C_RED)
@@ -1286,8 +1137,8 @@ class MeasurementApp:
         # Movement monitor tick
         self._mv_tick()
 
-        # Warning dashboard
-        self._compute_warnings()
+        # Warning panel + strip update
+        self._update_warnings()
 
         self.root.after(50, self.update_gui_loop)
 
