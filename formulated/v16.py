@@ -572,8 +572,8 @@ class MeasurementApp:
         self.btn_stop.config(state="disabled")
         self.mv_prog_bar["value"] = 0
         self.mv_status_lbl.config(
-            text=f"⏳  Collecting initial distance…  (0 / {COLLECT_N})",
-            fg="#f39c12")
+            text=f"Collecting initial distance... (0 / {COLLECT_N})",
+            fg=C_AMBER)
 
     def _mv_stop(self):
         if self.mv_state != "ready":
@@ -620,8 +620,8 @@ class MeasurementApp:
             self.mv_prog_bar["value"] = n
             self.mv_prog_lbl.config(text=f"Reading {n} / {COLLECT_N}")
             self.mv_status_lbl.config(
-                text=f"⏳  Collecting initial distance…  ({n} / {COLLECT_N})",
-                fg="#f39c12")
+                text=f"Collecting initial distance... ({n} / {COLLECT_N})",
+                fg=C_AMBER)
             if n >= COLLECT_N:
                 self.mv_dist_init = {
                     "top":    float(np.mean(self.mv_init_buf["top"][:COLLECT_N])),
@@ -635,9 +635,9 @@ class MeasurementApp:
                     text="✅  Initial captured — move the panel, then press  STOP",
                     fg=C_GREEN)
                 self.mv_init_lbl_top.config(
-                    text=f"Init: {self.mv_dist_init['top']:.3f} mm", fg=C_TEXT)
+                    text=f"Init: {self.mv_dist_init['top']:.3f} mm", fg=C_TEXT_MED)
                 self.mv_init_lbl_bot.config(
-                    text=f"Init: {self.mv_dist_init['bottom']:.3f} mm", fg=C_TEXT)
+                    text=f"Init: {self.mv_dist_init['bottom']:.3f} mm", fg=C_TEXT_MED)
 
         elif self.mv_state == "collecting_final":
             for key in ["top", "bottom"]:
@@ -648,8 +648,8 @@ class MeasurementApp:
             self.mv_prog_bar["value"] = n
             self.mv_prog_lbl.config(text=f"Reading {n} / {COLLECT_N}")
             self.mv_status_lbl.config(
-                text=f"⏳  Collecting final distance…  ({n} / {COLLECT_N})",
-                fg="#f39c12")
+                text=f"Collecting final distance... ({n} / {COLLECT_N})",
+                fg=C_AMBER)
             if n >= COLLECT_N:
                 self.mv_dist_final = {
                     "top":    float(np.mean(self.mv_final_buf["top"][:COLLECT_N])),
@@ -668,10 +668,10 @@ class MeasurementApp:
                 ]:
                     di = self.mv_dist_init[key]; df = self.mv_dist_final[key]
                     delta = df - di
-                    il.config(text=f"Init: {di:.3f} mm",   fg=C_TEXT)
-                    fl.config(text=f"Final: {df:.3f} mm",  fg=C_TEXT)
+                    il.config(text=f"Init: {di:.3f} mm",   fg=C_TEXT_MED)
+                    fl.config(text=f"Final: {df:.3f} mm",  fg=C_TEXT_MED)
                     sign  = "+" if delta >= 0 else ""
-                    color = C_RED if delta > 0.5 else (C_GREEN if delta < -0.5 else C_BLUE)
+                    color = C_RED if delta > 0.5 else (C_GREEN if delta < -0.5 else C_ACCENT)
                     dl.config(text=f"{sign}{delta:.3f} mm", fg=color)
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -819,7 +819,7 @@ class MeasurementApp:
                         roll_r = math.degrees(math.atan2(R[1, 0], R[0, 0]))
                         # full euler decomposition
                         pitch, yaw, _ = rotation_to_euler(R)
-                        return pts3d, roll_r, float(tv[2]), pitch, yaw
+                        return pts3d, roll_r, float(tv[2, 0]), pitch, yaw
 
                     def inplane_rot(c_sorted):
                         return abs(math.degrees(math.atan2(
