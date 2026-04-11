@@ -1016,14 +1016,14 @@ class MeasurementApp:
                     if abs(ry) > y_th:
                         wlines.append(f"R-YAW {ry:+.1f}d {'R' if ry>0 else 'L'}")
                     if wlines:
-                        # Simplified summary box above the ArUco marker
+                        # Simplified summary box BELOW the ArUco marker (to avoid hiding distance text)
                         bx1 = max(0, p1[0] - 5)
-                        by1 = max(0, p1[1] - 45)
-                        cv.rectangle(frame, (bx1, by1), (bx1 + 140, by1 + 28), (20, 20, 20), -1)
-                        cv.rectangle(frame, (bx1, by1), (bx1 + 140, by1 + 28), (0, 30, 180), 2)
+                        by1 = min(RESOLUTION[1] - 30, p1[1] + 22)  # Position below the line
+                        cv.rectangle(frame, (bx1, by1), (bx1 + 130, by1 + 25), (20, 20, 20), -1)
+                        cv.rectangle(frame, (bx1, by1), (bx1 + 130, by1 + 25), (0, 30, 180), 2)
                         cv.putText(frame, f"ISSUES: {len(wlines)}",
-                                   (bx1 + 8, by1 + 20),
-                                   cv.FONT_HERSHEY_SIMPLEX, 0.5,
+                                   (bx1 + 8, by1 + 18),
+                                   cv.FONT_HERSHEY_SIMPLEX, 0.45,
                                    (0, 220, 255), 2)
 
             rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
