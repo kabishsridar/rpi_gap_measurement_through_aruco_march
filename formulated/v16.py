@@ -96,7 +96,7 @@ class MeasurementApp:
         self.rot_threshold    = tk.DoubleVar(value=12.0)
         self.pitch_threshold  = tk.DoubleVar(value=10.0)   # NEW
         self.yaw_threshold    = tk.DoubleVar(value=10.0)   # NEW
-        self.use_angle_thresh = tk.BooleanVar(value=True)
+        self.use_angle_thresh = tk.BooleanVar(value=False)
 
         # ── Camera vars ───────────────────────────────────────────────────────
         self.cam_ae         = tk.BooleanVar(value=True)
@@ -1008,7 +1008,7 @@ class MeasurementApp:
                         by1 = max(0, p1[1] - 45)
                         cv.rectangle(frame, (bx1, by1), (bx1 + 140, by1 + 28), (20, 20, 20), -1)
                         cv.rectangle(frame, (bx1, by1), (bx1 + 140, by1 + 28), (0, 30, 180), 2)
-                        cv.putText(frame, f"⚠️ {len(wlines)} ISSUES",
+                        cv.putText(frame, f"ISSUES: {len(wlines)}",
                                    (bx1 + 8, by1 + 20),
                                    cv.FONT_HERSHEY_SIMPLEX, 0.5,
                                    (0, 220, 255), 2)
@@ -1109,13 +1109,13 @@ class MeasurementApp:
         # Warning box update (as a list)
         if strip_parts:
             is_crit = any("CRITICAL" in x for x in strip_parts)
-            list_text = "⚠️  ACTIVE ALERTS:\n" + "\n".join([f" • {x}" for x in strip_parts])
+            list_text = "![!] ACTIVE ALERTS:\n" + "\n".join([f" • {x}" for x in strip_parts])
             self.warn_strip.config(
                 text=list_text,
                 fg=C_RED if is_crit else C_AMBER, bg=C_PANEL)
         else:
             self.warn_strip.config(
-                text="✅  SYSTEM OPERATIONAL\n • All marker pairs detected correctly\n • Environmental lighting is nominal\n • All tilt/rotation values within tolerance",
+                text="[OK]  SYSTEM OPERATIONAL\n • All marker pairs detected correctly\n • Environmental lighting is nominal\n • All tilt/rotation values within tolerance",
                 fg=C_GREEN, bg=C_PANEL)
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -1168,14 +1168,14 @@ class MeasurementApp:
             top_ok = self.last_data["top"]["dist"]    > 0
             bot_ok = self.last_data["bottom"]["dist"] > 0
             if top_ok and bot_ok:
-                self.lbl_cam_status.config(text="✅ Both pairs detected", fg=C_GREEN)
+                self.lbl_cam_status.config(text="STATUS: Both pairs detected", fg=C_GREEN)
             elif top_ok or bot_ok:
                 self.lbl_cam_status.config(
-                    text=f"⚠️  Only {'TOP' if top_ok else 'BOTTOM'} pair detected",
+                    text=f"STATUS: Only {'TOP' if top_ok else 'BOTTOM'} pair detected",
                     fg=C_AMBER)
             else:
                 self.lbl_cam_status.config(
-                    text="❌ No ArUco detected — adjust camera settings", fg=C_RED)
+                    text="STATUS: No ArUco detected — adjust camera settings", fg=C_RED)
 
         # Movement monitor tick
         self._mv_tick()
