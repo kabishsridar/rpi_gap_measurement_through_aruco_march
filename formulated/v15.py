@@ -29,7 +29,7 @@ AWB_MODES = {
     "Cloudy":      5,
 }
 
-# ── v14 colour palette (unchanged) ────────────────────────────────────────────
+# ── Professional Colour Palette ───────────────────────────────────────────────
 C_BG    = "#1e272e"
 C_PANEL = "#2d3436"
 C_CARD  = "#ffffff"
@@ -41,6 +41,15 @@ C_BLUE  = "#0984e3"
 C_TEXT  = "#2d3436"
 C_MUTED = "#636e72"
 C_AMBER = "#f39c12"
+
+# ── Font Definitions ─────────────────────────────────────────────────────────
+F_TITLE = ("Helvetica", 14, "bold")
+F_HEAD  = ("Helvetica", 12, "bold")
+F_BODY  = ("Helvetica", 12)
+F_SMALL = ("Helvetica", 10)
+F_DATA  = ("Helvetica", 32, "bold")
+F_MONO  = ("Courier New", 12)
+F_BTN   = ("Helvetica", 14, "bold")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -148,11 +157,12 @@ class MeasurementApp:
         s.theme_use('clam')
         s.configure("TNotebook",       background=C_BG,    borderwidth=0)
         s.configure("TNotebook.Tab",   background=C_PANEL, foreground="white",
-                    padding=[14, 6],   font=("Helvetica", 10, "bold"))
+                    padding=[20, 10],   font=F_HEAD)
         s.map("TNotebook.Tab",
               background=[("selected", C_BLUE)],
               foreground=[("selected", "white")])
         s.configure("TFrame", background=C_BG)
+        s.configure("TProgressbar", thickness=20)
 
     # ══════════════════════════════════════════════════════════════════════════
     #  UI wiring  — 4 tabs, same as v14
@@ -168,9 +178,9 @@ class MeasurementApp:
     # ── helper: white card frame (v14-identical) ──────────────────────────────
     def _card(self, parent, title, title_color, **pack_kw):
         f = tk.LabelFrame(parent, text=f"  {title}  ",
-                          font=("Helvetica", 11, "bold"),
+                          font=F_HEAD,
                           fg=title_color, bg=C_CARD,
-                          bd=1, relief="solid", padx=10, pady=8)
+                          bd=1, relief="solid", padx=15, pady=15)
         f.pack(**pack_kw)
         return f
 
@@ -194,11 +204,11 @@ class MeasurementApp:
         self.warn_strip = tk.Label(
             left,
             text="  ⏳  Waiting for camera data…",
-            font=("Helvetica", 10, "bold"),
+            font=F_HEAD,
             fg=C_MUTED, bg=C_CARD,
-            anchor="w", padx=8, pady=3,
+            anchor="w", padx=15, pady=8,
             wraplength=955, justify="left")
-        self.warn_strip.pack(fill="x", pady=(4, 0))
+        self.warn_strip.pack(fill="x", pady=(8, 0))
 
         # ── Right panel ───────────────────────────────────────────────────────
         right = tk.Frame(tab, bg=C_BG)
@@ -219,68 +229,75 @@ class MeasurementApp:
             else:
                 self.lbl_dist_bot, self.lbl_k_bot = dl, kl
 
-        # Status + progress  (v14-identical)
+        # Status + progress
         self.mv_status_lbl = tk.Label(
-            right, text="Press  START  to capture initial gap",
-            font=("Helvetica", 11), fg="#dfe6e9", bg=C_BG,
-            wraplength=260, justify="center")
-        self.mv_status_lbl.pack(pady=(10, 2))
+            right, text="Press START to capture initial gap",
+            font=F_HEAD, fg="#dfe6e9", bg=C_BG,
+            wraplength=350, justify="center")
+        self.mv_status_lbl.pack(pady=(15, 5))
 
         prog_f = tk.Frame(right, bg=C_BG)
-        prog_f.pack(fill="x", padx=6)
+        prog_f.pack(fill="x", padx=10)
         self.mv_prog_lbl = tk.Label(prog_f, text="",
-                                    font=("Helvetica", 10), fg=C_GREEN, bg=C_BG)
+                                    font=F_HEAD, fg=C_GREEN, bg=C_BG)
         self.mv_prog_lbl.pack()
-        self.mv_prog_bar = ttk.Progressbar(prog_f, length=240, maximum=COLLECT_N,
+        self.mv_prog_bar = ttk.Progressbar(prog_f, length=300, maximum=COLLECT_N,
                                            mode="determinate")
-        self.mv_prog_bar.pack(pady=2)
+        self.mv_prog_bar.pack(pady=5)
 
-        # Buttons  (v14-identical)
+        # Buttons
         btn_f = tk.Frame(right, bg=C_BG)
-        btn_f.pack(pady=8, fill="x", padx=6)
-        btn_cfg = dict(font=("Helvetica", 13, "bold"), relief="flat",
-                       padx=14, pady=8, bd=0, cursor="hand2")
+        btn_f.pack(pady=15, fill="x", padx=10)
+        btn_cfg = dict(font=F_BTN, relief="flat",
+                       padx=20, pady=12, bd=0, cursor="hand2")
+
+        def add_hover(btn, normal_bg, hover_bg):
+            btn.bind("<Enter>", lambda e: btn.config(bg=hover_bg))
+            btn.bind("<Leave>", lambda e: btn.config(bg=normal_bg))
 
         self.btn_start = tk.Button(
             btn_f, text="▶ START", bg=C_GREEN, fg="white",
             activebackground="#00cec9",
             command=self._mv_start, **btn_cfg)
-        self.btn_start.pack(side="left", expand=True, fill="x", padx=2)
+        self.btn_start.pack(side="left", expand=True, fill="x", padx=4)
+        add_hover(self.btn_start, C_GREEN, "#00cec9")
 
         self.btn_stop = tk.Button(
             btn_f, text="■ STOP", bg=C_RED, fg="white",
             activebackground="#ff7675", state="disabled",
             command=self._mv_stop, **btn_cfg)
-        self.btn_stop.pack(side="left", expand=True, fill="x", padx=2)
+        self.btn_stop.pack(side="left", expand=True, fill="x", padx=4)
+        add_hover(self.btn_stop, C_RED, "#ff7675")
 
         self.btn_reset = tk.Button(
             btn_f, text="↺", bg=C_MUTED, fg="white",
             activebackground="#b2bec3",
             command=self._mv_reset, **btn_cfg)
-        self.btn_reset.pack(side="left", padx=2)
+        self.btn_reset.pack(side="left", padx=4)
+        add_hover(self.btn_reset, C_MUTED, "#b2bec3")
 
-        # Divider + heading  (v14-identical)
-        tk.Frame(right, bg=C_MUTED, height=1).pack(fill="x", padx=6, pady=8)
+        # Divider + heading
+        tk.Frame(right, bg=C_MUTED, height=1).pack(fill="x", padx=10, pady=12)
         tk.Label(right, text="Distance Moved",
-                 font=("Helvetica", 11, "bold"), fg="#dfe6e9",
+                 font=F_HEAD, fg="#dfe6e9",
                  bg=C_BG).pack()
 
-        # Delta rows  (v14-identical)
+        # Delta rows
         for key, title, col in [("top", "TOP", C_TOP), ("bottom", "BOT", C_BOT)]:
             row = tk.Frame(right, bg=C_CARD, bd=1, relief="solid")
-            row.pack(fill="x", padx=6, pady=4)
-            tk.Label(row, text=title, font=("Helvetica", 10, "bold"),
-                     fg=col, bg=C_CARD, width=5).pack(side="left", padx=6, pady=6)
+            row.pack(fill="x", padx=10, pady=6)
+            tk.Label(row, text=title, font=F_HEAD,
+                     fg=col, bg=C_CARD, width=6).pack(side="left", padx=10, pady=10)
             info = tk.Frame(row, bg=C_CARD); info.pack(side="left", expand=True)
             init_lbl  = tk.Label(info, text="Init: —",
-                                 font=("Helvetica", 9), fg=C_MUTED, bg=C_CARD, anchor="w")
-            init_lbl.pack(fill="x", padx=4)
+                                 font=F_BODY, fg=C_MUTED, bg=C_CARD, anchor="w")
+            init_lbl.pack(fill="x", padx=6)
             final_lbl = tk.Label(info, text="Final: —",
-                                 font=("Helvetica", 9), fg=C_MUTED, bg=C_CARD, anchor="w")
-            final_lbl.pack(fill="x", padx=4)
+                                 font=F_BODY, fg=C_MUTED, bg=C_CARD, anchor="w")
+            final_lbl.pack(fill="x", padx=6)
             delta_lbl = tk.Label(row, text="—",
-                                 font=("Helvetica", 22, "bold"), fg=C_BLUE, bg=C_CARD)
-            delta_lbl.pack(side="right", padx=10, pady=6)
+                                 font=F_DATA, fg=C_BLUE, bg=C_CARD)
+            delta_lbl.pack(side="right", padx=15, pady=10)
             if key == "top":
                 self.mv_init_lbl_top  = init_lbl
                 self.mv_final_lbl_top = final_lbl
@@ -290,53 +307,53 @@ class MeasurementApp:
                 self.mv_final_lbl_bot = final_lbl
                 self.mv_delta_lbl_bot = delta_lbl
 
-        # ── NEW: compact warnings panel ───────────────────────────────────────
-        tk.Frame(right, bg=C_MUTED, height=1).pack(fill="x", padx=6, pady=(8, 4))
+        # Warnings Panel
+        tk.Frame(right, bg=C_MUTED, height=1).pack(fill="x", padx=10, pady=(15, 8))
 
-        warn_f = tk.LabelFrame(right, text="  ⚠  Warnings  ",
-                               font=("Helvetica", 10, "bold"),
+        warn_f = tk.LabelFrame(right, text="  ⚠  Diagnostic Warnings  ",
+                               font=F_HEAD,
                                fg=C_RED, bg=C_CARD, bd=1, relief="solid",
-                               padx=6, pady=6)
-        warn_f.pack(fill="x", padx=6)
+                               padx=10, pady=10)
+        warn_f.pack(fill="x", padx=10)
 
         # Column-header row
         hdr = tk.Frame(warn_f, bg=C_CARD)
         hdr.pack(fill="x")
         for col_i, txt in enumerate(["", "L-Det", "R-Det", " Rot ", "Pitch", " Yaw "]):
-            w = 4 if col_i == 0 else 6
-            tk.Label(hdr, text=txt, font=("Helvetica", 7, "bold"),
+            w = 5 if col_i == 0 else 8
+            tk.Label(hdr, text=txt, font=F_HEAD,
                      fg=C_MUTED, bg=C_CARD, width=w,
-                     anchor="center").grid(row=0, column=col_i, padx=1)
+                     anchor="center").grid(row=0, column=col_i, padx=2)
 
         # Dot rows — self.warn_dots[pair][field] = tk.Label
         self.warn_dots = {}
         for r_i, (key, title, col) in enumerate(
                 [("top", "TOP", C_TOP), ("bottom", "BOT", C_BOT)], start=1):
             dots = {}
-            tk.Label(hdr, text=title, font=("Helvetica", 8, "bold"),
-                     fg=col, bg=C_CARD, width=4, anchor="w").grid(
-                row=r_i, column=0, padx=(0, 2), pady=2)
+            tk.Label(hdr, text=title, font=F_HEAD,
+                     fg=col, bg=C_CARD, width=5, anchor="w").grid(
+                row=r_i, column=0, padx=(0, 4), pady=4)
             for c_i, field in enumerate(["L_det", "R_det", "rot", "pitch", "yaw"], start=1):
-                dot = tk.Label(hdr, text="●", font=("Helvetica", 14),
-                               fg=C_MUTED, bg=C_CARD, width=6, anchor="center")
-                dot.grid(row=r_i, column=c_i, padx=1, pady=2)
+                dot = tk.Label(hdr, text="●", font=("Helvetica", 18),
+                               fg=C_MUTED, bg=C_CARD, width=8, anchor="center")
+                dot.grid(row=r_i, column=c_i, padx=2, pady=4)
                 dots[field] = dot
             self.warn_dots[key] = dots
 
         # Tooltip legend
         tk.Label(warn_f,
                  text="●=OK  ●=warn  ●=error     Pitch=fwd/bwd  Yaw=left/right",
-                 font=("Helvetica", 7), fg=C_MUTED, bg=C_CARD).pack(anchor="w", pady=(2, 0))
+                 font=F_SMALL, fg=C_MUTED, bg=C_CARD).pack(anchor="w", pady=(8, 0))
 
         # Lighting row
         light_row = tk.Frame(warn_f, bg=C_CARD)
-        light_row.pack(fill="x", pady=(4, 0))
-        tk.Label(light_row, text="💡 Lighting:", font=("Helvetica", 9, "bold"),
+        light_row.pack(fill="x", pady=(10, 0))
+        tk.Label(light_row, text="💡 Lighting Health:", font=F_HEAD,
                  fg=C_TEXT, bg=C_CARD).pack(side="left")
         self.lbl_lighting_mv = tk.Label(
-            light_row, text="—", font=("Helvetica", 9, "bold"),
+            light_row, text="—", font=F_HEAD,
             fg=C_MUTED, bg=C_CARD)
-        self.lbl_lighting_mv.pack(side="left", padx=6)
+        self.lbl_lighting_mv.pack(side="left", padx=10)
 
     # ══════════════════════════════════════════════════════════════════════════
     #  TAB 2: DUAL TELEMETRY  (v14 + L_PITCH, L_YAW, R_PITCH, R_YAW rows)
@@ -351,18 +368,18 @@ class MeasurementApp:
                   "L_ROL", "L_ROT", "L_Z", "L_PITCH", "L_YAW",
                   "R_ROL", "R_ROT", "R_Z", "R_PITCH", "R_YAW"]
         for key, title, col in [("top", "TOP", C_TOP), ("bottom", "BOTTOM", C_BOT)]:
-            cf = tk.LabelFrame(mtf, text=f" {title} DATA ",
-                               font=("Helvetica", 12, "bold"), fg=col, bg="#ecf0f1")
-            cf.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+            cf = tk.LabelFrame(mtf, text=f" {title} PAIR TELEMETRY ",
+                               font=F_TITLE, fg=col, bg="#ecf0f1", padx=15, pady=15)
+            cf.pack(side="left", fill="both", expand=True, padx=20, pady=20)
             for v_name in v_show:
                 row = tk.Frame(cf, bg="white",
                                highlightbackground="#bdc3c7", highlightthickness=1)
-                row.pack(fill="x", padx=10, pady=3)
-                tk.Label(row, text=v_name, font=("Helvetica", 9),
-                         bg="white").pack(side="left", padx=5)
+                row.pack(fill="x", padx=10, pady=5)
+                tk.Label(row, text=v_name, font=F_HEAD,
+                         bg="white").pack(side="left", padx=10, pady=5)
                 sv = tk.StringVar(value="—")
-                tk.Label(row, textvariable=sv, font=("Courier", 10),
-                         bg="white").pack(side="right", padx=5)
+                tk.Label(row, textvariable=sv, font=F_MONO,
+                         bg="white").pack(side="right", padx=10, pady=5)
                 self.tele_vars[key][v_name] = sv
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -385,13 +402,13 @@ class MeasurementApp:
 
         def create_slider(label, var, color, lo, hi, res=0.1):
             f = tk.LabelFrame(sc, text=f" {label} ", bg="white",
-                              font=("Helvetica", 10), fg=color, padx=20, pady=6)
-            f.pack(fill="x", pady=6)
+                              font=F_HEAD, fg=color, padx=25, pady=12)
+            f.pack(fill="x", pady=10)
             sl = tk.Scale(f, from_=lo, to=hi, resolution=res, orient="horizontal",
-                          variable=var, bg="white", length=500)
-            sl.pack(side="left", padx=16)
-            tk.Entry(f, textvariable=var, width=9,
-                     font=("Courier", 10)).pack(side="left")
+                          variable=var, bg="white", length=600, font=F_BODY)
+            sl.pack(side="left", padx=20)
+            tk.Entry(f, textvariable=var, width=10,
+                     font=F_MONO).pack(side="left")
             return sl
 
         create_slider("Upper Pair Marker Size (mm)",  self.size_top, C_TOP,  10, 200)
@@ -410,37 +427,37 @@ class MeasurementApp:
             self.yaw_threshold, "#16a085", 1, 45, res=0.5)
 
         # ── Angle-threshold toggle  (v14-identical) ───────────────────────────
-        tog_f = tk.LabelFrame(sc, text=" Angle Threshold Mode ", bg="white",
-                              font=("Helvetica", 10), fg="#2c3e50", padx=20, pady=10)
-        tog_f.pack(fill="x", pady=6)
+        tog_f = tk.LabelFrame(sc, text=" Measurement Logic Options ", bg="white",
+                              font=F_HEAD, fg="#2c3e50", padx=25, pady=15)
+        tog_f.pack(fill="x", pady=10)
 
         def _update_tog_label(*_):
             if self.use_angle_thresh.get():
                 tog_state_lbl.config(
-                    text="ON  — Perpendicular formula up to threshold, midpoint above",
+                    text="ON  — Use Perpendicular Formula (Accurate) below threshold",
                     fg=C_GREEN)
                 self.rot_threshold_slider.config(state="normal")
             else:
                 tog_state_lbl.config(
-                    text="OFF — Always use perpendicular formula (v8 behaviour)",
+                    text="OFF — Always use Perpendicular Formula (v8 High-Precision)",
                     fg=C_RED)
                 self.rot_threshold_slider.config(state="disabled")
 
         tog_row = tk.Frame(tog_f, bg="white"); tog_row.pack(fill="x")
-        self._tog_canvas = tk.Canvas(tog_row, width=56, height=28, bg="white",
+        self._tog_canvas = tk.Canvas(tog_row, width=80, height=40, bg="white",
                                      highlightthickness=0, cursor="hand2")
-        self._tog_canvas.pack(side="left", padx=(0, 12))
+        self._tog_canvas.pack(side="left", padx=(0, 20))
         tog_state_lbl = tk.Label(tog_row, text="",
-                                 font=("Helvetica", 10), bg="white", anchor="w")
+                                 font=F_HEAD, bg="white", anchor="w")
         tog_state_lbl.pack(side="left", fill="x", expand=True)
 
         def _draw_toggle():
             self._tog_canvas.delete("all")
             on = self.use_angle_thresh.get()
             bg = C_GREEN if on else "#b2bec3"
-            self._tog_canvas.create_oval(2, 2, 54, 26, fill=bg, outline="")
-            cx = 38 if on else 18
-            self._tog_canvas.create_oval(cx-12, 4, cx+12, 24, fill="white", outline="")
+            self._tog_canvas.create_oval(4, 4, 76, 36, fill=bg, outline="")
+            cx = 58 if on else 22
+            self._tog_canvas.create_oval(cx-14, 6, cx+14, 34, fill="white", outline="")
 
         def _toggle_click(_=None):
             self.use_angle_thresh.set(not self.use_angle_thresh.get())
@@ -462,74 +479,74 @@ class MeasurementApp:
         cam_right.pack(side="right", fill="y", padx=8, pady=8, ipadx=4)
 
         tk.Label(cam_left, text="Live Camera Preview",
-                 font=("Helvetica", 11, "bold"), fg="#ecf0f1",
-                 bg="#1a252f").pack(pady=(8, 0))
+                 font=F_TITLE, fg="#ecf0f1",
+                 bg="#1a252f").pack(pady=(15, 0))
         self.cam_canvas = tk.Canvas(cam_left, width=800, height=480, bg="black",
-                                    highlightthickness=1, highlightbackground=C_MUTED)
-        self.cam_canvas.pack(padx=10, pady=10)
+                                    highlightthickness=2, highlightbackground=C_MUTED)
+        self.cam_canvas.pack(padx=20, pady=20)
         self.lbl_cam_status = tk.Label(cam_left, text="⏳ Waiting for camera…",
-                                       font=("Helvetica", 11, "bold"),
+                                       font=F_TITLE,
                                        fg="#f39c12", bg="#1a252f")
-        self.lbl_cam_status.pack(pady=4)
-        # NEW: lighting status in camera tab
+        self.lbl_cam_status.pack(pady=8)
+        # Lighting status in camera tab
         self.lbl_lighting_cam = tk.Label(cam_left, text="",
-                                         font=("Helvetica", 10, "bold"),
+                                         font=F_HEAD,
                                          fg=C_MUTED, bg="#1a252f")
-        self.lbl_lighting_cam.pack(pady=2)
+        self.lbl_lighting_cam.pack(pady=5)
 
-        tk.Label(cam_right, text="Camera Settings",
-                 font=("Helvetica", 13, "bold"), fg=C_TEXT,
-                 bg="#ecf0f1").pack(pady=(10, 4))
+        tk.Label(cam_right, text="Sensor Configuration",
+                 font=F_TITLE, fg=C_TEXT,
+                 bg="#ecf0f1").pack(pady=(20, 10))
 
         def cam_row(label, var, lo, hi, res, unit=""):
             rf = tk.LabelFrame(cam_right, text=f" {label} ", bg="white",
-                               font=("Helvetica", 9), padx=8, pady=4)
-            rf.pack(fill="x", padx=6, pady=3)
+                               font=F_HEAD, padx=12, pady=8)
+            rf.pack(fill="x", padx=10, pady=5)
             inner = tk.Frame(rf, bg="white"); inner.pack(fill="x")
             tk.Scale(inner, from_=lo, to=hi, resolution=res,
                      orient="horizontal", variable=var, bg="white",
-                     length=260, command=lambda _: self._apply_cam()).pack(side="left")
-            tk.Entry(inner, textvariable=var, width=7,
-                     font=("Courier", 9)).pack(side="left", padx=4)
+                     length=300, font=F_SMALL, command=lambda _: self._apply_cam()).pack(side="left")
+            tk.Entry(inner, textvariable=var, width=8,
+                     font=F_MONO).pack(side="left", padx=8)
             if unit:
                 tk.Label(inner, text=unit, bg="white",
-                         font=("Helvetica", 8), fg=C_MUTED).pack(side="left")
+                         font=F_SMALL, fg=C_MUTED).pack(side="left")
 
-        ae_f = tk.LabelFrame(cam_right, text=" Auto Exposure ", bg="white",
-                             font=("Helvetica", 9), padx=8, pady=4)
-        ae_f.pack(fill="x", padx=6, pady=3)
-        tk.Checkbutton(ae_f, text="Enable Auto Exposure (AE)",
+        ae_f = tk.LabelFrame(cam_right, text=" Exposure Control ", bg="white",
+                             font=F_HEAD, padx=12, pady=8)
+        ae_f.pack(fill="x", padx=10, pady=5)
+        tk.Checkbutton(ae_f, text="Enable Software Auto-Exposure",
                        variable=self.cam_ae, bg="white",
-                       font=("Helvetica", 10),
+                       font=F_BODY,
                        command=self._apply_cam).pack(anchor="w")
 
         cam_row("Exposure Time", self.cam_exposure, 100,  66000, 100, "µs")
         cam_row("ISO / Gain",    self.cam_gain,     1.0,  16.0,  0.1, "x")
 
-        awb_f = tk.LabelFrame(cam_right, text=" White Balance ", bg="white",
-                              font=("Helvetica", 9), padx=8, pady=4)
-        awb_f.pack(fill="x", padx=6, pady=3)
-        tk.Checkbutton(awb_f, text="Auto White Balance",
+        awb_f = tk.LabelFrame(cam_right, text=" Color Profile / AWB ", bg="white",
+                              font=F_HEAD, padx=12, pady=8)
+        awb_f.pack(fill="x", padx=10, pady=5)
+        tk.Checkbutton(awb_f, text="Hardware Auto White Balance",
                        variable=self.cam_awb, bg="white",
-                       font=("Helvetica", 10),
+                       font=F_BODY,
                        command=self._apply_cam).pack(anchor="w")
-        wbm_row = tk.Frame(awb_f, bg="white"); wbm_row.pack(fill="x", pady=2)
+        wbm_row = tk.Frame(awb_f, bg="white"); wbm_row.pack(fill="x", pady=5)
         tk.Label(wbm_row, text="Mode:", bg="white",
-                 font=("Helvetica", 9)).pack(side="left")
+                 font=F_BODY).pack(side="left")
         for mode_name in AWB_MODES:
             tk.Radiobutton(wbm_row, text=mode_name, variable=self.cam_awb_mode,
-                           value=mode_name, bg="white", font=("Helvetica", 8),
-                           command=self._apply_cam).pack(side="left", padx=2)
+                           value=mode_name, bg="white", font=F_SMALL,
+                           command=self._apply_cam).pack(side="left", padx=5)
 
         cam_row("Brightness", self.cam_brightness, -1.0, 1.0, 0.05)
         cam_row("Contrast",   self.cam_contrast,    0.0, 8.0, 0.1)
         cam_row("Saturation", self.cam_saturation,  0.0, 8.0, 0.1)
         cam_row("Sharpness",  self.cam_sharpness,   0.0, 8.0, 0.1)
 
-        tk.Button(cam_right, text="↺  Reset to Defaults",
-                  font=("Helvetica", 10, "bold"), bg=C_RED, fg="white",
-                  activebackground="#c0392b", relief="flat", padx=10, pady=6,
-                  command=self._reset_cam).pack(pady=10, fill="x", padx=6)
+        tk.Button(cam_right, text="↺  Restore Factory Defaults",
+                  font=F_BTN, bg=C_RED, fg="white",
+                  activebackground="#c0392b", relief="flat", padx=15, pady=12,
+                  command=self._reset_cam).pack(pady=20, fill="x", padx=10)
 
     # ══════════════════════════════════════════════════════════════════════════
     #  Movement monitor logic  (v14-identical)
