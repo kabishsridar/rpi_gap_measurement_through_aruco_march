@@ -191,7 +191,7 @@ class MeasurementApp:
             hdr.pack(fill="x", pady=(0, 8))
             tk.Label(hdr, text=title.upper(),
                      font=("Helvetica", 8, "bold"), fg=accent,
-                     bg=C_SURF, letterSpacing=2).pack(side="left")
+                     bg=C_SURF).pack(side="left")
             tk.Frame(hdr, bg=C_BORDER, height=1).pack(
                 side="left", fill="x", expand=True, padx=(8, 0), pady=6)
         return inner
