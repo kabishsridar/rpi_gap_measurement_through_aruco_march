@@ -384,14 +384,14 @@ class MeasurementApp:
                                font=F_TITLE, fg=col, bg=C_BG, padx=15, pady=15)
             cf.pack(side="left", fill="both", expand=True, padx=20, pady=20)
             for v_name in v_show:
-                row = tk.Frame(cf, bg="white",
-                               highlightbackground=C_PANEL, highlightthickness=1)
+                row = tk.Frame(cf, bg=C_PANEL,
+                               highlightbackground=C_CARD, highlightthickness=1)
                 row.pack(fill="x", padx=10, pady=5)
-                tk.Label(row, text=v_name, font=F_HEAD,
-                         bg="white").pack(side="left", padx=10, pady=5)
+                tk.Label(row, text=v_name, font=F_HEAD, fg=C_TEXT_MED,
+                         bg=C_PANEL).pack(side="left", padx=10, pady=5)
                 sv = tk.StringVar(value="—")
-                tk.Label(row, textvariable=sv, font=F_MONO,
-                         bg="white").pack(side="right", padx=10, pady=5)
+                tk.Label(row, textvariable=sv, font=F_MONO, fg=C_TEXT_BRT,
+                         bg=C_PANEL).pack(side="right", padx=10, pady=5)
                 self.tele_vars[key][v_name] = sv
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -404,23 +404,25 @@ class MeasurementApp:
         sc = tk.Frame(tab, bg=C_BG)
         sc.pack(fill="both", expand=True, padx=80, pady=40)
 
-        rf = tk.LabelFrame(sc, text=" Reference Side (Fixed ArUco) ", bg="white",
-                           font=("Helvetica", 11, "bold"), padx=20, pady=10)
+        rf = tk.LabelFrame(sc, text=" Reference Side (Fixed ArUco) ", bg=C_PANEL,
+                           fg=C_TEXT_BRT, font=F_HEAD, padx=20, pady=10)
         rf.pack(fill="x", pady=(0, 12))
         for choice in ["Left", "Right"]:
             tk.Radiobutton(rf, text=choice, variable=self.fixed_side,
-                           value=choice, bg="white",
-                           font=("Helvetica", 12)).pack(side="left", padx=24)
+                           value=choice, bg=C_PANEL, fg=C_TEXT_BRT,
+                           selectcolor=C_BG, activebackground=C_PANEL,
+                           font=F_BODY).pack(side="left", padx=24)
 
         def create_slider(label, var, color, lo, hi, res=0.1):
-            f = tk.LabelFrame(sc, text=f" {label} ", bg="white",
+            f = tk.LabelFrame(sc, text=f" {label} ", bg=C_PANEL,
                               font=F_HEAD, fg=color, padx=25, pady=12)
             f.pack(fill="x", pady=10)
             sl = tk.Scale(f, from_=lo, to=hi, resolution=res, orient="horizontal",
-                          variable=var, bg="white", length=600, font=F_BODY)
+                          variable=var, bg=C_PANEL, fg=C_TEXT_BRT, troughcolor=C_BG,
+                          highlightthickness=0, length=600, font=F_BODY)
             sl.pack(side="left", padx=20)
-            tk.Entry(f, textvariable=var, width=10,
-                     font=F_MONO).pack(side="left")
+            tk.Entry(f, textvariable=var, width=10, bg=C_BG, fg=C_ACCENT,
+                     insertbackground=C_TEXT_BRT, bd=0, font=F_MONO).pack(side="left")
             return sl
 
         create_slider("Upper Pair Marker Size (mm)",  self.size_top, C_TOP,  10, 200)
@@ -438,9 +440,9 @@ class MeasurementApp:
             "Yaw Threshold °  (left / right tilt  —  'one side in' warning)",
             self.yaw_threshold, "#16a085", 1, 45, res=0.5)
 
-        # ── Angle-threshold toggle  (v14-identical) ───────────────────────────
-        tog_f = tk.LabelFrame(sc, text=" Measurement Logic Options ", bg="white",
-                              font=F_HEAD, fg="#2c3e50", padx=25, pady=15)
+        # ── Angle-threshold toggle
+        tog_f = tk.LabelFrame(sc, text=" Measurement Logic Options ", bg=C_PANEL,
+                              font=F_HEAD, fg=C_TEXT_BRT, padx=25, pady=15)
         tog_f.pack(fill="x", pady=10)
 
         def _update_tog_label(*_):
@@ -455,12 +457,12 @@ class MeasurementApp:
                     fg=C_RED)
                 self.rot_threshold_slider.config(state="disabled")
 
-        tog_row = tk.Frame(tog_f, bg="white"); tog_row.pack(fill="x")
-        self._tog_canvas = tk.Canvas(tog_row, width=80, height=40, bg="white",
+        tog_row = tk.Frame(tog_f, bg=C_PANEL); tog_row.pack(fill="x")
+        self._tog_canvas = tk.Canvas(tog_row, width=80, height=40, bg=C_PANEL,
                                      highlightthickness=0, cursor="hand2")
         self._tog_canvas.pack(side="left", padx=(0, 20))
         tog_state_lbl = tk.Label(tog_row, text="",
-                                 font=F_HEAD, bg="white", anchor="w")
+                                 font=F_HEAD, bg=C_PANEL, anchor="w")
         tog_state_lbl.pack(side="left", fill="x", expand=True)
 
         def _draw_toggle():
@@ -511,43 +513,47 @@ class MeasurementApp:
                  bg=C_BG).pack(pady=(20, 10))
 
         def cam_row(label, var, lo, hi, res, unit=""):
-            rf = tk.LabelFrame(cam_right, text=f" {label} ", bg="white",
-                               font=F_HEAD, padx=12, pady=8)
+            rf = tk.LabelFrame(cam_right, text=f" {label} ", bg=C_PANEL,
+                               font=F_HEAD, fg=C_TEXT_BRT, padx=12, pady=8)
             rf.pack(fill="x", padx=10, pady=5)
-            inner = tk.Frame(rf, bg="white"); inner.pack(fill="x")
+            inner = tk.Frame(rf, bg=C_PANEL); inner.pack(fill="x")
             tk.Scale(inner, from_=lo, to=hi, resolution=res,
-                     orient="horizontal", variable=var, bg="white",
+                     orient="horizontal", variable=var, bg=C_PANEL, fg=C_TEXT_BRT,
+                     troughcolor=C_BG, highlightthickness=0,
                      length=300, font=F_SMALL, command=lambda _: self._apply_cam()).pack(side="left")
-            tk.Entry(inner, textvariable=var, width=8,
-                     font=F_MONO).pack(side="left", padx=8)
+            tk.Entry(inner, textvariable=var, width=8, bg=C_BG, fg=C_ACCENT,
+                     bd=0, font=F_MONO).pack(side="left", padx=8)
             if unit:
-                tk.Label(inner, text=unit, bg="white",
+                tk.Label(inner, text=unit, bg=C_PANEL,
                          font=F_SMALL, fg=C_TEXT_MED).pack(side="left")
 
-        ae_f = tk.LabelFrame(cam_right, text=" Exposure Control ", bg="white",
-                             font=F_HEAD, padx=12, pady=8)
+        ae_f = tk.LabelFrame(cam_right, text=" Exposure Control ", bg=C_PANEL,
+                             font=F_HEAD, fg=C_TEXT_BRT, padx=12, pady=8)
         ae_f.pack(fill="x", padx=10, pady=5)
         tk.Checkbutton(ae_f, text="Enable Software Auto-Exposure",
-                       variable=self.cam_ae, bg="white",
+                       variable=self.cam_ae, bg=C_PANEL, fg=C_TEXT_BRT,
+                       selectcolor=C_BG, activebackground=C_PANEL,
                        font=F_BODY,
                        command=self._apply_cam).pack(anchor="w")
 
         cam_row("Exposure Time", self.cam_exposure, 100,  66000, 100, "us")
         cam_row("ISO / Gain",    self.cam_gain,     1.0,  16.0,  0.1, "x")
 
-        awb_f = tk.LabelFrame(cam_right, text=" Color Profile / AWB ", bg="white",
-                              font=F_HEAD, padx=12, pady=8)
+        awb_f = tk.LabelFrame(cam_right, text=" Color Profile / AWB ", bg=C_PANEL,
+                             font=F_HEAD, fg=C_TEXT_BRT, padx=12, pady=8)
         awb_f.pack(fill="x", padx=10, pady=5)
         tk.Checkbutton(awb_f, text="Hardware Auto White Balance",
-                       variable=self.cam_awb, bg="white",
+                       variable=self.cam_awb, bg=C_PANEL, fg=C_TEXT_BRT,
+                       selectcolor=C_BG, activebackground=C_PANEL,
                        font=F_BODY,
                        command=self._apply_cam).pack(anchor="w")
-        wbm_row = tk.Frame(awb_f, bg="white"); wbm_row.pack(fill="x", pady=5)
-        tk.Label(wbm_row, text="Mode:", bg="white",
+        wbm_row = tk.Frame(awb_f, bg=C_PANEL); wbm_row.pack(fill="x", pady=5)
+        tk.Label(wbm_row, text="Mode:", bg=C_PANEL, fg=C_TEXT_MED,
                  font=F_BODY).pack(side="left")
         for mode_name in AWB_MODES:
             tk.Radiobutton(wbm_row, text=mode_name, variable=self.cam_awb_mode,
-                           value=mode_name, bg="white", font=F_SMALL,
+                           value=mode_name, bg=C_PANEL, fg=C_TEXT_BRT,
+                           selectcolor=C_BG, activebackground=C_PANEL, font=F_SMALL,
                            command=self._apply_cam).pack(side="left", padx=5)
 
         cam_row("Brightness", self.cam_brightness, -1.0, 1.0, 0.05)
