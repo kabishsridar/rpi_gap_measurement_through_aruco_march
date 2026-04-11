@@ -211,17 +211,24 @@ class MeasurementApp:
                                 highlightthickness=1, highlightbackground=C_PANEL)
         self.canvas.pack()
 
-        # Warning box directly below the canvas (multi-line list)
-        self.warn_strip = tk.Label(
-            left,
-            text="  READY  —  SYSTEM INITIALIZING",
+        # Warning box container (Scrollable)
+        warn_f = tk.Frame(left, bg=C_PANEL, bd=1, relief="solid")
+        warn_f.pack(fill="x", pady=(12, 0))
+
+        self.warn_strip = tk.Text(
+            warn_f,
+            height=6,
             font=F_HEAD,
             fg=C_ACCENT, bg=C_PANEL,
-            anchor="nw", padx=20, pady=15,
-            bd=1, relief="solid",
-            wraplength=920, justify="left",
-            height=6)  # Box height for roughly 6 lines
-        self.warn_strip.pack(fill="x", pady=(12, 0))
+            padx=15, pady=12,
+            bd=0, highlightthickness=0,
+            wrap="word", cursor="arrow", state="disabled")
+        self.warn_strip.pack(side="left", fill="both", expand=True)
+
+        warn_scroll = tk.Scrollbar(warn_f, orient="vertical", command=self.warn_strip.yview,
+                                   width=12, bg=C_PANEL, troughcolor=C_BG, bd=0)
+        warn_scroll.pack(side="right", fill="y")
+        self.warn_strip.config(yscrollcommand=warn_scroll.set)
 
         # ── Right panel ───────────────────────────────────────────────────────
         right = tk.Frame(tab, bg=C_BG)
@@ -1112,17 +1119,21 @@ class MeasurementApp:
         self.lbl_lighting_mv.config(text=light_txt, fg=light_col)
         self.lbl_lighting_cam.config(text=f"LIGHTING PROFILE: {light_txt}", fg=light_col)
 
-        # Warning box update (as a list)
+        # Warning box update (Scrollable)
+        self.warn_strip.config(state="normal")
+        self.warn_strip.delete("1.0", tk.END)
+        
         if strip_parts:
             is_crit = any("CRITICAL" in x for x in strip_parts)
             list_text = "![!] ACTIVE ALERTS:\n" + "\n".join([f" • {x}" for x in strip_parts])
-            self.warn_strip.config(
-                text=list_text,
-                fg=C_RED if is_crit else C_AMBER, bg=C_PANEL)
+            self.warn_strip.config(fg=C_RED if is_crit else C_AMBER)
+            self.warn_strip.insert(tk.END, list_text)
         else:
-            self.warn_strip.config(
-                text="[OK]  SYSTEM OPERATIONAL\n • All marker pairs detected correctly\n • Environmental lighting is nominal\n • All tilt/rotation values within tolerance",
-                fg=C_GREEN, bg=C_PANEL)
+            self.warn_strip.config(fg=C_GREEN)
+            list_text = "[OK]  SYSTEM OPERATIONAL\n • All marker pairs detected correctly\n • Environmental lighting is nominal\n • All tilt/rotation values within tolerance"
+            self.warn_strip.insert(tk.END, list_text)
+            
+        self.warn_strip.config(state="disabled")
 
     # ══════════════════════════════════════════════════════════════════════════
     #  GUI refresh loop  (main thread, 50 ms)
