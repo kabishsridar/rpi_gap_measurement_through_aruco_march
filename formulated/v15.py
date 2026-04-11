@@ -527,11 +527,10 @@ class MeasurementApp:
         for choice in ["Left", "Right"]:
             tk.Radiobutton(rb_row, text=f"  {choice}  ", variable=self.fixed_side,
                            value=choice, bg=C_SURF, fg=C_TEXT,
-                           selectcolor=C_SURF2, activebackground=C_SURF,
+                           selectcolor=C_BLUE, activebackground=C_SURF,
                            activeforeground=C_TEXT, indicatoron=0,
                            font=("Helvetica", 11, "bold"),
-                           relief="flat", padx=20, pady=8,
-                           selectcolor=C_BLUE).pack(side="left", padx=(0, 8))
+                           relief="flat", padx=20, pady=8).pack(side="left", padx=(0, 8))
 
         # Slider helper
         def _slider_block(parent, title, desc, var, accent, lo, hi, res=0.1):
