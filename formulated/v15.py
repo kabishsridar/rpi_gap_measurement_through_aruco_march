@@ -1098,23 +1098,28 @@ class MeasurementApp:
 
         # Tab 2: telemetry
         for key in ["top", "bottom"]:
-            d  = self.last_data[key]
-            tv = self.tele_vars[key]
-            for var in ["A", "X", "TR", "BR", "B", "C"]:
+            d, tv = self.last_data[key], self.tele_vars[key]
+            # Use Z-component only for A and X as requested
+            tv["A"].set(f"{d['A'][2]:.2f}")
+            tv["X"].set(f"{d['X'][2]:.2f}")
+            
+            # TR, BR, B, C can stay as triplets or simplified? User didn't specify, but I'll keep them as triplets for now unless asked.
+            for var in ["TR", "BR", "B", "C"]:
                 v = d[var]
                 tv[var].set(f"{v[0]:.1f}, {v[1]:.1f}, {v[2]:.1f}")
-            lr = d.get("L_A", (0.0, 0.0))
-            rr = d.get("R_A", (0.0, 0.0))
+
+            lr, rr = d.get("L_A", (0.0, 0.0)), d.get("R_A", (0.0, 0.0))
             tv["L_ROL"].set(f"{lr[0]:.2f}° (roll)")
             tv["L_ROT"].set(f"{lr[1]:.2f}° (in-plane)")
-            tv["L_Z"].set(f"{d['L_z']:.1f} mm")
-            tv["L_PITCH"].set(f"{d.get('L_pitch', 0.0):+.2f}°")
-            tv["L_YAW"].set(f"{d.get('L_yaw',   0.0):+.2f}°")
+            tv["L_Z"].set(f"{d['L_z']:.1f}")
+            tv["L_PITCH"].set(f"{d.get('L_pitch', 0.0):+.2f}")
+            tv["L_YAW"].set(f"{d.get('L_yaw',   0.0):+.2f}")
+            
             tv["R_ROL"].set(f"{rr[0]:.2f}° (roll)")
             tv["R_ROT"].set(f"{rr[1]:.2f}° (in-plane)")
-            tv["R_Z"].set(f"{d['R_z']:.1f} mm")
-            tv["R_PITCH"].set(f"{d.get('R_pitch', 0.0):+.2f}°")
-            tv["R_YAW"].set(f"{d.get('R_yaw',   0.0):+.2f}°")
+            tv["R_Z"].set(f"{d['R_z']:.1f}")
+            tv["R_PITCH"].set(f"{d.get('R_pitch', 0.0):+.2f}")
+            tv["R_YAW"].set(f"{d.get('R_yaw',   0.0):+.2f}")
 
         # Tab 4: camera preview + detection status
         if self._cam_preview_frame is not None:
@@ -1143,27 +1148,7 @@ class MeasurementApp:
         self.root.after(50, self.update_gui_loop)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
     root = tk.Tk()
     app = MeasurementApp(root)
     root.mainloop()
-ang["R_yaw"].set(f"{d['R_yaw']:+.1f}"); ang["R_roll"].set(f"{d['R_A'][0]:+.1f}")
-
-        li = self.last_data["lighting"]
-        self._set_chip(self._light_brt_chip, self._light_brt_val, "ok" if li["status"]=="ok" else "error", f"{li['mean']:.0f}")
-        self._set_chip(self._light_ctr_chip, self._light_ctr_val, "ok" if li["status"]=="ok" else "warn", f"{li['std']:.0f}")
-
-        # Telemetry
-        for pk in ["top", "bottom"]:
-            d, tv = self.last_data[pk], self.tele_vars[pk]
-            tv["A"].set(f"{d['A'][2]:.2f}"); tv["X"].set(f"{d['X'][2]:.2f}")
-            tv["L_PITCH"].set(f"{d['L_pitch']:+.2f}"); tv["L_YAW"].set(f"{d['L_yaw']:+.2f}")
-            tv["R_PITCH"].set(f"{d['R_pitch']:+.2f}"); tv["R_YAW"].set(f"{d['R_yaw']:+.2f}")
-            tv["L_Z"].set(f"{d['L_z']:.1f}"); tv["R_Z"].set(f"{d['R_z']:.1f}")
-
-        self._mv_tick()
-        self.root.after(50, self.update_gui_loop)
-
-if __name__ == "__main__":
-    root = tk.Tk(); app = MeasurementApp(root); root.mainloop()
