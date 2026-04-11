@@ -211,15 +211,16 @@ class MeasurementApp:
                                 highlightthickness=1, highlightbackground=C_PANEL)
         self.canvas.pack()
 
-        # Warning strip directly below the canvas
+        # Warning box directly below the canvas (multi-line list)
         self.warn_strip = tk.Label(
             left,
             text="  READY  —  SYSTEM INITIALIZING",
             font=F_HEAD,
             fg=C_ACCENT, bg=C_PANEL,
-            anchor="w", padx=20, pady=12,
+            anchor="nw", padx=20, pady=15,
             bd=1, relief="solid",
-            wraplength=955, justify="left")
+            wraplength=920, justify="left",
+            height=6)  # Box height for roughly 6 lines
         self.warn_strip.pack(fill="x", pady=(12, 0))
 
         # ── Right panel ───────────────────────────────────────────────────────
@@ -1002,16 +1003,15 @@ class MeasurementApp:
                     if abs(ry) > y_th:
                         wlines.append(f"R-YAW {ry:+.1f}d {'R' if ry>0 else 'L'}")
                     if wlines:
+                        # Simplified summary box above the ArUco marker
                         bx1 = max(0, p1[0] - 5)
-                        by1 = max(0, p1[1] - 30 - 22 * len(wlines))
-                        bx2 = bx1 + 238; by2 = by1 + 22 * len(wlines) + 6
-                        cv.rectangle(frame, (bx1, by1), (bx2, by2), (20, 20, 20), -1)
-                        cv.rectangle(frame, (bx1, by1), (bx2, by2), (0, 30, 180), 2)
-                        for li, wl in enumerate(wlines):
-                            cv.putText(frame, wl,
-                                       (bx1 + 4, by1 + 17 + li * 22),
-                                       cv.FONT_HERSHEY_SIMPLEX, 0.46,
-                                       (0, 220, 255), 1)
+                        by1 = max(0, p1[1] - 45)
+                        cv.rectangle(frame, (bx1, by1), (bx1 + 140, by1 + 28), (20, 20, 20), -1)
+                        cv.rectangle(frame, (bx1, by1), (bx1 + 140, by1 + 28), (0, 30, 180), 2)
+                        cv.putText(frame, f"⚠️ {len(wlines)} ISSUES",
+                                   (bx1 + 8, by1 + 20),
+                                   cv.FONT_HERSHEY_SIMPLEX, 0.5,
+                                   (0, 220, 255), 2)
 
             rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
             self.current_frame      = rgb
@@ -1106,16 +1106,16 @@ class MeasurementApp:
         self.lbl_lighting_mv.config(text=light_txt, fg=light_col)
         self.lbl_lighting_cam.config(text=f"LIGHTING PROFILE: {light_txt}", fg=light_col)
 
-        # Warning strip update
+        # Warning box update (as a list)
         if strip_parts:
-            # Check if any critial warnings exist
             is_crit = any("CRITICAL" in x for x in strip_parts)
+            list_text = "⚠️  ACTIVE ALERTS:\n" + "\n".join([f" • {x}" for x in strip_parts])
             self.warn_strip.config(
-                text="  ⚠  " + "   |   ".join(strip_parts),
+                text=list_text,
                 fg=C_RED if is_crit else C_AMBER, bg=C_PANEL)
         else:
             self.warn_strip.config(
-                text="  ✅  SYSTEM NOMINAL  —  ALL READINGS STABLE",
+                text="✅  SYSTEM OPERATIONAL\n • All marker pairs detected correctly\n • Environmental lighting is nominal\n • All tilt/rotation values within tolerance",
                 fg=C_GREEN, bg=C_PANEL)
 
     # ══════════════════════════════════════════════════════════════════════════
