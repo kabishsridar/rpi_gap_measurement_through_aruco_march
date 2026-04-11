@@ -29,27 +29,27 @@ AWB_MODES = {
     "Cloudy":      5,
 }
 
-# ── Professional Colour Palette ───────────────────────────────────────────────
-C_BG    = "#1e272e"
-C_PANEL = "#2d3436"
-C_CARD  = "#ffffff"
-C_TOP   = "#e67e22"
-C_BOT   = "#9b59b6"
-C_GREEN = "#00b894"
-C_RED   = "#d63031"
-C_BLUE  = "#0984e3"
-C_TEXT  = "#2d3436"
-C_MUTED = "#636e72"
-C_AMBER = "#f39c12"
+# ── Control Room Aesthetic Palette ───────────────────────────────────────────
+C_BG      = "#0f172a"  # Deep slate/navy
+C_PANEL   = "#1e293b"  # Rich navy card background
+C_CARD    = "#334155"  # Lighter slate for nested cards
+C_ACCENT   = "#38bdf8"  # Professional cyan blue
+C_TOP      = "#fb923c"  # Vivid orange
+C_BOT      = "#c084fc"  # Vivid purple
+C_GREEN    = "#4ade80"  # Vibrant green
+C_RED      = "#f87171"  # Vibrant red
+C_TEXT_BRT = "#f8fafc"  # Off-white
+C_TEXT_MED = "#94a3b8"  # Muted blue-gray
+C_AMBER    = "#fbbf24"  # Warning amber
 
-# ── Font Definitions ─────────────────────────────────────────────────────────
-F_TITLE = ("Helvetica", 14, "bold")
-F_HEAD  = ("Helvetica", 12, "bold")
-F_BODY  = ("Helvetica", 12)
-F_SMALL = ("Helvetica", 10)
-F_DATA  = ("Helvetica", 32, "bold")
-F_MONO  = ("Courier New", 12)
-F_BTN   = ("Helvetica", 14, "bold")
+# ── Typography ───────────────────────────────────────────────────────────────
+F_TITLE = ("Inter", 16, "bold")      # Modern font fallback
+F_HEAD  = ("Inter", 13, "bold")
+F_BODY  = ("Inter", 12)
+F_SMALL = ("Inter", 10)
+F_DATA  = ("Inter", 36, "bold")      # Huge, legible numbers
+F_MONO  = ("Consolas", 13)
+F_BTN   = ("Inter", 14, "bold")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -155,14 +155,24 @@ class MeasurementApp:
     def _style(self):
         s = ttk.Style()
         s.theme_use('clam')
-        s.configure("TNotebook",       background=C_BG,    borderwidth=0)
-        s.configure("TNotebook.Tab",   background=C_PANEL, foreground="white",
-                    padding=[20, 10],   font=F_HEAD)
+        s.configure("TNotebook", 
+                    background=C_BG, 
+                    borderwidth=0)
+        s.configure("TNotebook.Tab", 
+                    background=C_PANEL, 
+                    foreground=C_TEXT_MED,
+                    padding=[25, 12], 
+                    font=F_HEAD, 
+                    borderwidth=0)
         s.map("TNotebook.Tab",
-              background=[("selected", C_BLUE)],
-              foreground=[("selected", "white")])
+              background=[("selected", C_ACCENT)],
+              foreground=[("selected", C_BG)])
         s.configure("TFrame", background=C_BG)
-        s.configure("TProgressbar", thickness=20)
+        s.configure("TProgressbar", 
+                    thickness=24, 
+                    background=C_ACCENT, 
+                    troughcolor=C_PANEL,
+                    borderwidth=0)
 
     # ══════════════════════════════════════════════════════════════════════════
     #  UI wiring  — 4 tabs, same as v14
@@ -177,10 +187,11 @@ class MeasurementApp:
 
     # ── helper: white card frame (v14-identical) ──────────────────────────────
     def _card(self, parent, title, title_color, **pack_kw):
-        f = tk.LabelFrame(parent, text=f"  {title}  ",
+        f = tk.LabelFrame(parent, text=f"  {title.upper()}  ",
                           font=F_HEAD,
-                          fg=title_color, bg=C_CARD,
-                          bd=1, relief="solid", padx=15, pady=15)
+                          fg=title_color, bg=C_PANEL,
+                          bd=2, relief="flat", highlightbackground=title_color, 
+                          highlightthickness=1, padx=20, pady=20)
         f.pack(**pack_kw)
         return f
 
@@ -197,107 +208,106 @@ class MeasurementApp:
         left.pack(side="left", padx=16, pady=16)
 
         self.canvas = tk.Canvas(left, width=960, height=540, bg="black",
-                                highlightthickness=1, highlightbackground=C_MUTED)
+                                highlightthickness=1, highlightbackground=C_PANEL)
         self.canvas.pack()
 
         # Warning strip directly below the canvas
         self.warn_strip = tk.Label(
             left,
-            text="  ⏳  Waiting for camera data…",
+            text="  READY  —  SYSTEM INITIALIZING",
             font=F_HEAD,
-            fg=C_MUTED, bg=C_CARD,
-            anchor="w", padx=15, pady=8,
+            fg=C_ACCENT, bg=C_PANEL,
+            anchor="w", padx=20, pady=12,
+            bd=1, relief="solid",
             wraplength=955, justify="left")
-        self.warn_strip.pack(fill="x", pady=(8, 0))
+        self.warn_strip.pack(fill="x", pady=(12, 0))
 
         # ── Right panel ───────────────────────────────────────────────────────
         right = tk.Frame(tab, bg=C_BG)
         right.pack(side="right", fill="both", expand=True, padx=12, pady=10)
 
-        # Distance cards  (v14-identical)
-        for key, title, col in [("top", "TOP PAIR", C_TOP),
-                                 ("bottom", "BOTTOM PAIR", C_BOT)]:
-            card = self._card(right, title, col, fill="x", pady=6, padx=6)
+        # Distance cards
+        for key, title, col in [("top", "UPPER SENSOR", C_TOP),
+                                 ("bottom", "LOWER SENSOR", C_BOT)]:
+            card = self._card(right, title, col, fill="x", pady=10, padx=12)
             dl = tk.Label(card, text="0.000 mm",
-                          font=("Helvetica", 24, "bold"), fg=C_GREEN, bg=C_CARD)
-            dl.pack(pady=(4, 0))
-            kl = tk.Label(card, text="k: 0.0000",
-                          font=("Helvetica", 10), fg=C_MUTED, bg=C_CARD)
-            kl.pack(pady=(0, 4))
+                          font=F_DATA, fg=C_GREEN, bg=C_PANEL)
+            dl.pack(pady=(12, 4))
+            kl = tk.Label(card, text="INTERSECT RATIO: 0.0000",
+                          font=F_SMALL, fg=C_TEXT_MED, bg=C_PANEL)
+            kl.pack(pady=(0, 12))
             if key == "top":
                 self.lbl_dist_top, self.lbl_k_top = dl, kl
             else:
                 self.lbl_dist_bot, self.lbl_k_bot = dl, kl
 
         # Status + progress
+        stf = tk.Frame(right, bg=C_BG)
+        stf.pack(fill="x", pady=(15, 0))
         self.mv_status_lbl = tk.Label(
-            right, text="Press START to capture initial gap",
-            font=F_HEAD, fg="#dfe6e9", bg=C_BG,
-            wraplength=350, justify="center")
-        self.mv_status_lbl.pack(pady=(15, 5))
+            stf, text="READY FOR INITIAL CAPTURE",
+            font=F_HEAD, fg=C_TEXT_MED, bg=C_BG,
+            wraplength=380, justify="center")
+        self.mv_status_lbl.pack(pady=(5, 5))
 
         prog_f = tk.Frame(right, bg=C_BG)
-        prog_f.pack(fill="x", padx=10)
+        prog_f.pack(fill="x", padx=12)
         self.mv_prog_lbl = tk.Label(prog_f, text="",
                                     font=F_HEAD, fg=C_GREEN, bg=C_BG)
         self.mv_prog_lbl.pack()
-        self.mv_prog_bar = ttk.Progressbar(prog_f, length=300, maximum=COLLECT_N,
+        self.mv_prog_bar = ttk.Progressbar(prog_f, length=380, maximum=COLLECT_N,
                                            mode="determinate")
-        self.mv_prog_bar.pack(pady=5)
+        self.mv_prog_bar.pack(pady=8)
 
         # Buttons
         btn_f = tk.Frame(right, bg=C_BG)
-        btn_f.pack(pady=15, fill="x", padx=10)
+        btn_f.pack(pady=20, fill="x", padx=12)
         btn_cfg = dict(font=F_BTN, relief="flat",
-                       padx=20, pady=12, bd=0, cursor="hand2")
+                       padx=24, pady=16, bd=0, cursor="hand2")
 
         def add_hover(btn, normal_bg, hover_bg):
             btn.bind("<Enter>", lambda e: btn.config(bg=hover_bg))
             btn.bind("<Leave>", lambda e: btn.config(bg=normal_bg))
 
         self.btn_start = tk.Button(
-            btn_f, text="▶ START", bg=C_GREEN, fg="white",
-            activebackground="#00cec9",
+            btn_f, text="▶ START SESSION", bg=C_GREEN, fg=C_BG,
+            activebackground="#86efac",
             command=self._mv_start, **btn_cfg)
-        self.btn_start.pack(side="left", expand=True, fill="x", padx=4)
-        add_hover(self.btn_start, C_GREEN, "#00cec9")
+        self.btn_start.pack(side="left", expand=True, fill="x", padx=6)
+        add_hover(self.btn_start, C_GREEN, "#86efac")
 
         self.btn_stop = tk.Button(
-            btn_f, text="■ STOP", bg=C_RED, fg="white",
-            activebackground="#ff7675", state="disabled",
+            btn_f, text="■ STOP (SAVE)", bg=C_RED, fg=C_BG,
+            activebackground="#fca5a5", state="disabled",
             command=self._mv_stop, **btn_cfg)
-        self.btn_stop.pack(side="left", expand=True, fill="x", padx=4)
-        add_hover(self.btn_stop, C_RED, "#ff7675")
+        self.btn_stop.pack(side="left", expand=True, fill="x", padx=6)
+        add_hover(self.btn_stop, C_RED, "#fca5a5")
 
         self.btn_reset = tk.Button(
-            btn_f, text="↺", bg=C_MUTED, fg="white",
-            activebackground="#b2bec3",
+            btn_f, text="↺", bg=C_CARD, fg="white",
+            activebackground=C_TEXT_MED,
             command=self._mv_reset, **btn_cfg)
-        self.btn_reset.pack(side="left", padx=4)
-        add_hover(self.btn_reset, C_MUTED, "#b2bec3")
-
-        # Divider + heading
-        tk.Frame(right, bg=C_MUTED, height=1).pack(fill="x", padx=10, pady=12)
-        tk.Label(right, text="Distance Moved",
-                 font=F_HEAD, fg="#dfe6e9",
-                 bg=C_BG).pack()
+        self.btn_reset.pack(side="left", padx=6)
+        add_hover(self.btn_reset, C_CARD, C_TEXT_MED)
 
         # Delta rows
-        for key, title, col in [("top", "TOP", C_TOP), ("bottom", "BOT", C_BOT)]:
-            row = tk.Frame(right, bg=C_CARD, bd=1, relief="solid")
-            row.pack(fill="x", padx=10, pady=6)
+        tk.Frame(right, bg=C_CARD, height=2).pack(fill="x", padx=12, pady=15)
+        
+        for key, title, col in [("top", "UPPER", C_TOP), ("bottom", "LOWER", C_BOT)]:
+            row = tk.Frame(right, bg=C_PANEL, bd=1, relief="solid")
+            row.pack(fill="x", padx=12, pady=8)
             tk.Label(row, text=title, font=F_HEAD,
-                     fg=col, bg=C_CARD, width=6).pack(side="left", padx=10, pady=10)
-            info = tk.Frame(row, bg=C_CARD); info.pack(side="left", expand=True)
-            init_lbl  = tk.Label(info, text="Init: —",
-                                 font=F_BODY, fg=C_MUTED, bg=C_CARD, anchor="w")
-            init_lbl.pack(fill="x", padx=6)
-            final_lbl = tk.Label(info, text="Final: —",
-                                 font=F_BODY, fg=C_MUTED, bg=C_CARD, anchor="w")
-            final_lbl.pack(fill="x", padx=6)
+                     fg=col, bg=C_PANEL, width=8).pack(side="left", padx=12, pady=12)
+            info = tk.Frame(row, bg=C_PANEL); info.pack(side="left", expand=True)
+            init_lbl  = tk.Label(info, text="INIT: —",
+                                 font=F_BODY, fg=C_TEXT_MED, bg=C_PANEL, anchor="w")
+            init_lbl.pack(fill="x", padx=8)
+            final_lbl = tk.Label(info, text="FINAL: —",
+                                 font=F_BODY, fg=C_TEXT_MED, bg=C_PANEL, anchor="w")
+            final_lbl.pack(fill="x", padx=8)
             delta_lbl = tk.Label(row, text="—",
-                                 font=F_DATA, fg=C_BLUE, bg=C_CARD)
-            delta_lbl.pack(side="right", padx=15, pady=10)
+                                 font=F_DATA, fg=C_ACCENT, bg=C_PANEL)
+            delta_lbl.pack(side="right", padx=20, pady=12)
             if key == "top":
                 self.mv_init_lbl_top  = init_lbl
                 self.mv_final_lbl_top = final_lbl
@@ -307,53 +317,54 @@ class MeasurementApp:
                 self.mv_final_lbl_bot = final_lbl
                 self.mv_delta_lbl_bot = delta_lbl
 
-        # Warnings Panel
-        tk.Frame(right, bg=C_MUTED, height=1).pack(fill="x", padx=10, pady=(15, 8))
-
-        warn_f = tk.LabelFrame(right, text="  ⚠  Diagnostic Warnings  ",
+        # Warnings Dashboard
+        warn_f = tk.LabelFrame(right, text="  SENSORY DIAGNOSTICS  ",
                                font=F_HEAD,
-                               fg=C_RED, bg=C_CARD, bd=1, relief="solid",
-                               padx=10, pady=10)
-        warn_f.pack(fill="x", padx=10)
+                               fg=C_RED, bg=C_PANEL, bd=0, padx=15, pady=15)
+        warn_f.pack(fill="x", padx=12, pady=(20, 10))
 
-        # Column-header row
-        hdr = tk.Frame(warn_f, bg=C_CARD)
+        # Modern header
+        hdr = tk.Frame(warn_f, bg=C_PANEL)
         hdr.pack(fill="x")
-        for col_i, txt in enumerate(["", "L-Det", "R-Det", " Rot ", "Pitch", " Yaw "]):
-            w = 5 if col_i == 0 else 8
-            tk.Label(hdr, text=txt, font=F_HEAD,
-                     fg=C_MUTED, bg=C_CARD, width=w,
+        cols = ["PAIR", "L-DET", "R-DET", "ROTATION", "PITCH", "YAW"]
+        for col_i, txt in enumerate(cols):
+            w = 8 if col_i == 0 else 10
+            tk.Label(hdr, text=txt, font=F_SMALL,
+                     fg=C_TEXT_MED, bg=C_PANEL, width=w,
                      anchor="center").grid(row=0, column=col_i, padx=2)
 
-        # Dot rows — self.warn_dots[pair][field] = tk.Label
         self.warn_dots = {}
         for r_i, (key, title, col) in enumerate(
-                [("top", "TOP", C_TOP), ("bottom", "BOT", C_BOT)], start=1):
+                [("top", "UPPER", C_TOP), ("bottom", "LOWER", C_BOT)], start=1):
             dots = {}
             tk.Label(hdr, text=title, font=F_HEAD,
-                     fg=col, bg=C_CARD, width=5, anchor="w").grid(
-                row=r_i, column=0, padx=(0, 4), pady=4)
+                     fg=col, bg=C_PANEL, width=8, anchor="w").grid(
+                row=r_i, column=0, padx=(0, 6), pady=6)
             for c_i, field in enumerate(["L_det", "R_det", "rot", "pitch", "yaw"], start=1):
-                dot = tk.Label(hdr, text="●", font=("Helvetica", 18),
-                               fg=C_MUTED, bg=C_CARD, width=8, anchor="center")
-                dot.grid(row=r_i, column=c_i, padx=2, pady=4)
+                dot = tk.Label(hdr, text="■", font=("Inter", 20),
+                               fg=C_CARD, bg=C_PANEL, width=8, anchor="center")
+                dot.grid(row=r_i, column=c_i, padx=2, pady=6)
                 dots[field] = dot
             self.warn_dots[key] = dots
 
-        # Tooltip legend
-        tk.Label(warn_f,
-                 text="●=OK  ●=warn  ●=error     Pitch=fwd/bwd  Yaw=left/right",
-                 font=F_SMALL, fg=C_MUTED, bg=C_CARD).pack(anchor="w", pady=(8, 0))
+        # Lighting "Chips"
+        light_f = tk.Frame(warn_f, bg=C_PANEL)
+        light_f.pack(fill="x", pady=(15, 0))
+        
+        def _make_chip(parent, label):
+            f = tk.Frame(parent, bg=C_CARD, padx=8, pady=4)
+            f.pack(side="left", padx=5)
+            tk.Label(f, text=label, font=F_SMALL, fg=C_TEXT_MED, bg=C_CARD).pack(side="left")
+            val = tk.Label(f, text="—", font=F_HEAD, fg=C_TEXT_BRT, bg=C_CARD)
+            val.pack(side="left", padx=(5, 0))
+            return f, val
 
-        # Lighting row
-        light_row = tk.Frame(warn_f, bg=C_CARD)
-        light_row.pack(fill="x", pady=(10, 0))
-        tk.Label(light_row, text="💡 Lighting Health:", font=F_HEAD,
-                 fg=C_TEXT, bg=C_CARD).pack(side="left")
-        self.lbl_lighting_mv = tk.Label(
-            light_row, text="—", font=F_HEAD,
-            fg=C_MUTED, bg=C_CARD)
-        self.lbl_lighting_mv.pack(side="left", padx=10)
+        tk.Label(light_f, text="LIGHTING:", font=F_HEAD, fg=C_TEXT_BRT, bg=C_PANEL).pack(side="left", padx=(0, 10))
+        self._light_brt_chip, self._light_brt_val = _make_chip(light_f, "BRT")
+        self._light_ctr_chip, self._light_ctr_val = _make_chip(light_f, "CTR")
+        
+        self.lbl_lighting_mv = tk.Label(light_f, text="SCANNING...", font=F_HEAD, fg=C_ACCENT, bg=C_PANEL)
+        self.lbl_lighting_mv.pack(side="right")
 
     # ══════════════════════════════════════════════════════════════════════════
     #  TAB 2: DUAL TELEMETRY  (v14 + L_PITCH, L_YAW, R_PITCH, R_YAW rows)
@@ -361,7 +372,7 @@ class MeasurementApp:
     def _build_tab_tele(self):
         tab = ttk.Frame(self.tabs)
         self.tabs.add(tab, text=" 🛸  Dual Telemetry ")
-        mtf = tk.Frame(tab, bg="#ecf0f1")
+        mtf = tk.Frame(tab, bg=C_BG)
         mtf.pack(fill="both", expand=True)
         self.tele_vars = {"top": {}, "bottom": {}}
         v_show = ["A", "X", "TR", "BR", "B", "C",
@@ -369,11 +380,11 @@ class MeasurementApp:
                   "R_ROL", "R_ROT", "R_Z", "R_PITCH", "R_YAW"]
         for key, title, col in [("top", "TOP", C_TOP), ("bottom", "BOTTOM", C_BOT)]:
             cf = tk.LabelFrame(mtf, text=f" {title} PAIR TELEMETRY ",
-                               font=F_TITLE, fg=col, bg="#ecf0f1", padx=15, pady=15)
+                               font=F_TITLE, fg=col, bg=C_BG, padx=15, pady=15)
             cf.pack(side="left", fill="both", expand=True, padx=20, pady=20)
             for v_name in v_show:
                 row = tk.Frame(cf, bg="white",
-                               highlightbackground="#bdc3c7", highlightthickness=1)
+                               highlightbackground=C_PANEL, highlightthickness=1)
                 row.pack(fill="x", padx=10, pady=5)
                 tk.Label(row, text=v_name, font=F_HEAD,
                          bg="white").pack(side="left", padx=10, pady=5)
@@ -389,7 +400,7 @@ class MeasurementApp:
     def _build_tab_settings(self):
         tab = ttk.Frame(self.tabs)
         self.tabs.add(tab, text=" ⚙  Machine Configuration ")
-        sc = tk.Frame(tab, bg="#ecf0f1")
+        sc = tk.Frame(tab, bg=C_BG)
         sc.pack(fill="both", expand=True, padx=80, pady=40)
 
         rf = tk.LabelFrame(sc, text=" Reference Side (Fixed ArUco) ", bg="white",
@@ -416,7 +427,7 @@ class MeasurementApp:
 
         self.rot_threshold_slider = create_slider(
             "Rotation Threshold °  (in-plane / formula switch)",
-            self.rot_threshold, C_TEXT, 0, 45)
+            self.rot_threshold, C_TEXT_BRT, 0, 45)
 
         create_slider(
             "Pitch Threshold °  (forward / backward tilt warning)",
@@ -473,30 +484,30 @@ class MeasurementApp:
         tab = ttk.Frame(self.tabs)
         self.tabs.add(tab, text=" 📷  Camera Controls ")
 
-        cam_left  = tk.Frame(tab, bg="#1a252f")
+        cam_left  = tk.Frame(tab, bg=C_BG)
         cam_left.pack(side="left", fill="both", expand=True, padx=8, pady=8)
-        cam_right = tk.Frame(tab, bg="#ecf0f1")
+        cam_right = tk.Frame(tab, bg=C_BG)
         cam_right.pack(side="right", fill="y", padx=8, pady=8, ipadx=4)
 
         tk.Label(cam_left, text="Live Camera Preview",
-                 font=F_TITLE, fg="#ecf0f1",
-                 bg="#1a252f").pack(pady=(15, 0))
+                 font=F_TITLE, fg=C_TEXT_BRT,
+                 bg=C_BG).pack(pady=(15, 0))
         self.cam_canvas = tk.Canvas(cam_left, width=800, height=480, bg="black",
-                                    highlightthickness=2, highlightbackground=C_MUTED)
+                                    highlightthickness=2, highlightbackground=C_PANEL)
         self.cam_canvas.pack(padx=20, pady=20)
         self.lbl_cam_status = tk.Label(cam_left, text="⏳ Waiting for camera…",
                                        font=F_TITLE,
-                                       fg="#f39c12", bg="#1a252f")
+                                       fg=C_AMBER, bg=C_BG)
         self.lbl_cam_status.pack(pady=8)
         # Lighting status in camera tab
         self.lbl_lighting_cam = tk.Label(cam_left, text="",
                                          font=F_HEAD,
-                                         fg=C_MUTED, bg="#1a252f")
+                                         fg=C_TEXT_MED, bg=C_BG)
         self.lbl_lighting_cam.pack(pady=5)
 
         tk.Label(cam_right, text="Sensor Configuration",
-                 font=F_TITLE, fg=C_TEXT,
-                 bg="#ecf0f1").pack(pady=(20, 10))
+                 font=F_TITLE, fg=C_TEXT_BRT,
+                 bg=C_BG).pack(pady=(20, 10))
 
         def cam_row(label, var, lo, hi, res, unit=""):
             rf = tk.LabelFrame(cam_right, text=f" {label} ", bg="white",
@@ -510,7 +521,7 @@ class MeasurementApp:
                      font=F_MONO).pack(side="left", padx=8)
             if unit:
                 tk.Label(inner, text=unit, bg="white",
-                         font=F_SMALL, fg=C_MUTED).pack(side="left")
+                         font=F_SMALL, fg=C_TEXT_MED).pack(side="left")
 
         ae_f = tk.LabelFrame(cam_right, text=" Exposure Control ", bg="white",
                              font=F_HEAD, padx=12, pady=8)
@@ -520,7 +531,7 @@ class MeasurementApp:
                        font=F_BODY,
                        command=self._apply_cam).pack(anchor="w")
 
-        cam_row("Exposure Time", self.cam_exposure, 100,  66000, 100, "µs")
+        cam_row("Exposure Time", self.cam_exposure, 100,  66000, 100, "us")
         cam_row("ISO / Gain",    self.cam_gain,     1.0,  16.0,  0.1, "x")
 
         awb_f = tk.LabelFrame(cam_right, text=" Color Profile / AWB ", bg="white",
@@ -586,12 +597,12 @@ class MeasurementApp:
         self.mv_prog_lbl.config(text="")
         self.mv_status_lbl.config(
             text="Press  START  to capture initial gap", fg="#dfe6e9")
-        self.mv_init_lbl_top.config(text="Init: —",   fg=C_MUTED)
-        self.mv_init_lbl_bot.config(text="Init: —",   fg=C_MUTED)
-        self.mv_final_lbl_top.config(text="Final: —", fg=C_MUTED)
-        self.mv_final_lbl_bot.config(text="Final: —", fg=C_MUTED)
-        self.mv_delta_lbl_top.config(text="—", fg=C_BLUE)
-        self.mv_delta_lbl_bot.config(text="—", fg=C_BLUE)
+        self.mv_init_lbl_top.config(text="Init: —",   fg=C_TEXT_MED)
+        self.mv_init_lbl_bot.config(text="Init: —",   fg=C_TEXT_MED)
+        self.mv_final_lbl_top.config(text="Final: —", fg=C_TEXT_MED)
+        self.mv_final_lbl_bot.config(text="Final: —", fg=C_TEXT_MED)
+        self.mv_delta_lbl_top.config(text="—", fg=C_ACCENT)
+        self.mv_delta_lbl_bot.config(text="—", fg=C_ACCENT)
 
     def _mv_tick(self):
         sc = self.last_data["session_count"]
@@ -1066,36 +1077,46 @@ class MeasurementApp:
         mean_b = li.get("mean", 0.0)
         std_b  = li.get("std",  0.0)
 
+        # Update chips
+        self._light_brt_val.config(text=f"{mean_b:.0f}")
+        self._light_ctr_val.config(text=f"{std_b:.0f}")
+        
+        brt_ok = ls not in ["dark", "bright"]
+        self._light_brt_chip.config(bg=C_GREEN if brt_ok else C_RED)
+        self._light_ctr_chip.config(bg=C_GREEN if ls != "flat" else C_AMBER)
+        
         if ls == "ok":
-            light_txt = f"OK  (brt={mean_b:.0f}  ctr={std_b:.0f})"
+            light_txt = "NOMINAL"
             light_col = C_GREEN
         elif ls == "dark":
-            light_txt = f"⚠ TOO DARK  (brt={mean_b:.0f})"
+            light_txt = "UNDEREXPOSED"
             light_col = C_RED
-            strip_parts.append(f"Lighting too dark (brt={mean_b:.0f})")
+            strip_parts.append(f"CRITICAL: Ambient light too low ({mean_b:.0f})")
         elif ls == "bright":
-            light_txt = f"⚠ OVEREXPOSED  (brt={mean_b:.0f})"
+            light_txt = "OVEREXPOSED"
             light_col = C_AMBER
-            strip_parts.append(f"Lighting overexposed (brt={mean_b:.0f})")
+            strip_parts.append(f"WARNING: Light exposure high ({mean_b:.0f})")
         elif ls == "flat":
-            light_txt = f"⚠ LOW CONTRAST  (ctr={std_b:.0f})"
+            light_txt = "LOW CONTRAST"
             light_col = C_AMBER
-            strip_parts.append(f"Lighting low contrast (ctr={std_b:.0f})")
+            strip_parts.append(f"WARNING: Image contrast degraded ({std_b:.0f})")
         else:
-            light_txt = "Waiting…"; light_col = C_MUTED
+            light_txt = "INIT..."; light_col = C_ACCENT
 
         self.lbl_lighting_mv.config(text=light_txt, fg=light_col)
-        self.lbl_lighting_cam.config(text=f"💡 Lighting: {light_txt}", fg=light_col)
+        self.lbl_lighting_cam.config(text=f"LIGHTING PROFILE: {light_txt}", fg=light_col)
 
-        # Warning strip
+        # Warning strip update
         if strip_parts:
+            # Check if any critial warnings exist
+            is_crit = any("CRITICAL" in x for x in strip_parts)
             self.warn_strip.config(
                 text="  ⚠  " + "   |   ".join(strip_parts),
-                fg=C_RED, bg="#fdeded")
+                fg=C_RED if is_crit else C_AMBER, bg=C_PANEL)
         else:
             self.warn_strip.config(
-                text="  ✅  All markers and lighting OK",
-                fg=C_GREEN, bg="#edfded")
+                text="  ✅  SYSTEM NOMINAL  —  ALL READINGS STABLE",
+                fg=C_GREEN, bg=C_PANEL)
 
     # ══════════════════════════════════════════════════════════════════════════
     #  GUI refresh loop  (main thread, 50 ms)
@@ -1109,9 +1130,9 @@ class MeasurementApp:
             self.canvas.img = img
 
         self.lbl_dist_top.config(text=f"{self.last_data['top']['dist']:.3f} mm")
-        self.lbl_k_top.config(text=f"k: {self.last_data['top']['k']:.4f}")
+        self.lbl_k_top.config(text=f"INTERSECT RATIO: {self.last_data['top']['k']:.4f}")
         self.lbl_dist_bot.config(text=f"{self.last_data['bottom']['dist']:.3f} mm")
-        self.lbl_k_bot.config(text=f"k: {self.last_data['bottom']['k']:.4f}")
+        self.lbl_k_bot.config(text=f"INTERSECT RATIO: {self.last_data['bottom']['k']:.4f}")
 
         # Tab 2: telemetry
         for key in ["top", "bottom"]:
@@ -1151,7 +1172,7 @@ class MeasurementApp:
             elif top_ok or bot_ok:
                 self.lbl_cam_status.config(
                     text=f"⚠️  Only {'TOP' if top_ok else 'BOTTOM'} pair detected",
-                    fg="#f39c12")
+                    fg=C_AMBER)
             else:
                 self.lbl_cam_status.config(
                     text="❌ No ArUco detected — adjust camera settings", fg=C_RED)
