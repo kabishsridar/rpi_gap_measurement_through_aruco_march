@@ -91,7 +91,7 @@ class MeasurementApp:
         self.rot_threshold    = tk.DoubleVar(value=15.0)
         self.pitch_threshold  = tk.DoubleVar(value=20.0)
         self.yaw_threshold    = tk.DoubleVar(value=20.0)
-        self.use_angle_thresh = tk.BooleanVar(value=True)
+        self.use_angle_thresh = tk.BooleanVar(value=False)
 
         # Camera variables
         self.cam_ae         = tk.BooleanVar(value=True)
@@ -405,6 +405,26 @@ class MeasurementApp:
         self.mv_state = "idle"; self.btn_start.config(state="normal"); self.btn_stop.config(state="disabled")
         self.mv_status_lbl.config(text="Ready for Measurement", fg=C_TEAL)
         self.mv_delta_lbl_top.config(text="—"); self.mv_delta_lbl_bot.config(text="—")
+
+    def _apply_cam(self, *_):
+        if self.pc is None: return
+        try:
+            c = {"AeEnable": self.cam_ae.get(), "Brightness": self.cam_brightness.get(), "Contrast": self.cam_contrast.get(),
+                 "Saturation": self.cam_saturation.get(), "Sharpness": self.cam_sharpness.get()}
+            if not self.cam_ae.get():
+                c["ExposureTime"] = int(self.cam_exposure.get())
+                c["AnalogueGain"] = float(self.cam_gain.get())
+            if not self.cam_awb.get():
+                c["AwbEnable"] = False
+                c["AwbMode"] = AWB_MODES.get(self.cam_awb_mode.get(), 0)
+            else: c["AwbEnable"] = True
+            self.pc.set_controls(c)
+        except: pass
+
+    def _reset_cam(self):
+        self.cam_ae.set(True); self.cam_exposure.set(10000); self.cam_gain.set(2.0)
+        self.cam_awb.set(True); self.cam_brightness.set(0.0); self.cam_contrast.set(1.0)
+        self.cam_saturation.set(1.0); self.cam_sharpness.set(1.0); self._apply_cam()
 
     def _mv_tick(self):
         sc = self.last_data["session_count"]
