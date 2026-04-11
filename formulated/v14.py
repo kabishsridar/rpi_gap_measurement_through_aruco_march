@@ -275,15 +275,19 @@ class MeasurementApp:
             f = tk.LabelFrame(sc, text=f" {label} ", bg="white",
                               font=("Helvetica", 10), fg=color, padx=20, pady=6)
             f.pack(fill="x", pady=6)
-            tk.Scale(f, from_=lo, to=hi, resolution=0.1, orient="horizontal",
-                     variable=var, bg="white", length=500).pack(side="left", padx=16)
+            sc_w = tk.Scale(f, from_=lo, to=hi, resolution=0.1, orient="horizontal",
+                            variable=var, bg="white", length=500)
+            sc_w.pack(side="left", padx=16)
             tk.Entry(f, textvariable=var, width=9,
                      font=("Courier", 10)).pack(side="left")
+            return sc_w
 
         create_slider("Upper Pair Marker Size (mm)",  self.size_top, C_TOP,  10, 200)
         create_slider("Bottom Pair Marker Size (mm)", self.size_bot, C_BOT,  10, 200)
-        create_slider("Rotation Threshold °  (perpendicular / fallback)",
-                      self.rot_threshold, C_TEXT, 0, 45)
+        # Store reference so the toggle switch can enable/disable it
+        self.rot_threshold_slider = create_slider(
+            "Rotation Threshold °  (perpendicular / fallback)",
+            self.rot_threshold, C_TEXT, 0, 45)
 
         # ── Angle Threshold Toggle ─────────────────────────────────────────
         tog_f = tk.LabelFrame(sc, text=" Angle Threshold Mode ", bg="white",
@@ -327,20 +331,6 @@ class MeasurementApp:
 
         self._tog_canvas.bind("<Button-1>", _toggle_click)
         _draw_toggle()
-        _update_tog_label()
-
-        # Keep reference to threshold slider so toggle can disable it
-        self.rot_threshold_slider = None   # assigned below via monkey-patch
-        # Re-create the threshold slider entry so we can reference the Scale widget
-        # (This is already created above via create_slider; we just need the handle)
-        # We'll patch it by rebuilding just the needed reference:
-        for widget in sc.winfo_children():
-            if isinstance(widget, tk.LabelFrame) and "Rotation" in str(widget.cget("text")):
-                for child in widget.winfo_children():
-                    if isinstance(child, tk.Scale):
-                        self.rot_threshold_slider = child
-                        break
-                break
         _update_tog_label()
 
     # ── TAB 4: CAMERA CONTROLS ────────────────────────────────────────────
