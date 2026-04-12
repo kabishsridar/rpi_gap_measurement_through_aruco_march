@@ -129,10 +129,10 @@ class MeasurementApp:
             else: self.lbl_dist_bot, self.lbl_k_bot = dl, kl
         tk.Label(right, text="READY FOR INITIAL CAPTURE", font=F_HEAD, fg=C_TEXT_MED, bg=C_BG).pack(pady=(15, 2))
         self.mv_prog_bar = ttk.Progressbar(right, length=380, maximum=COLLECT_N, mode="determinate"); self.mv_prog_bar.pack(pady=4)
-        bf = tk.Frame(right, bg=C_BG); bf.pack(pady=10, fill="x", padx=12)
-        self.btn_start = tk.Button(bf, text="▶ START SESSION", bg=C_GREEN, fg=C_BG, font=F_BTN, padx=10, pady=10, command=self._mv_start); self.btn_start.pack(side="left", expand=True, fill="x", padx=6)
-        self.btn_stop = tk.Button(bf, text="■ STOP (SAVE)", bg=C_RED, fg=C_BG, font=F_BTN, state="disabled", padx=10, pady=10, command=self._mv_stop); self.btn_stop.pack(side="left", expand=True, fill="x", padx=6)
-        self.btn_reset = tk.Button(bf, text="↺", bg=C_CARD, fg="white", font=F_BTN, width=5, pady=10, command=self._mv_reset); self.btn_reset.pack(side="left", padx=6)
+        bf = tk.Frame(right, bg=C_BG); bf.pack(pady=20, fill="x")
+        self.btn_start = tk.Button(bf, text="▶ START SESSION", bg=C_GREEN, fg=C_BG, font=F_BTN, width=18, pady=10, relief="flat", command=self._mv_start); self.btn_start.pack(side="left", padx=(15, 5))
+        self.btn_stop = tk.Button(bf, text="■ STOP (SAVE)", bg=C_RED, fg=C_BG, font=F_BTN, width=18, pady=10, relief="flat", state="disabled", command=self._mv_stop); self.btn_stop.pack(side="left", padx=5)
+        self.btn_reset = tk.Button(bf, text="↺", bg=C_CARD, fg="white", font=F_BTN, width=6, pady=10, relief="flat", command=self._mv_reset); self.btn_reset.pack(side="left", padx=(5, 15))
         for key, title, col in [("top", "UPPER", C_TOP), ("bottom", "LOWER", C_BOT)]:
             row = tk.Frame(right, bg=C_PANEL, bd=1, relief="solid"); row.pack(fill="x", padx=12, pady=4)
             dl = tk.Label(row, text="—", font=F_DATA, fg=C_ACCENT, bg=C_PANEL); dl.pack(side="right", padx=15, pady=8)

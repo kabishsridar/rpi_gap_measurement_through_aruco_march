@@ -90,11 +90,11 @@ class MeasurementApp:
         self.mv_st_l = tk.Label(r, text="READY", font=F['h'], fg=C['m'], bg=C['bg']); self.mv_st_l.pack(pady=10)
         self.p_bar = ttk.Progressbar(r, length=380, maximum=N); self.p_bar.pack(pady=8)
         
-        bf = tk.Frame(r, bg=C['bg']); bf.pack(pady=20, fill="x", padx=12)
+        bf = tk.Frame(r, bg=C['bg']); bf.pack(pady=20, fill="x")
         h = lambda b, n, h: (b.bind("<Enter>", lambda e: b.config(bg=h)), b.bind("<Leave>", lambda e: b.config(bg=n)))
-        self.b_st = tk.Button(bf, text="▶ START SESSION", bg=C['g'], fg=C['bg'], font=F['bt'], relief="flat", padx=10, pady=10, command=self._mv_st); self.b_st.pack(side="left", expand=True, fill="x", padx=6); h(self.b_st, C['g'], "#86efac")
-        self.b_sp = tk.Button(bf, text="■ STOP (SAVE)", bg=C['r'], fg=C['bg'], font=F['bt'], relief="flat", state="disabled", padx=10, pady=10, command=self._mv_sp); self.b_sp.pack(side="left", expand=True, fill="x", padx=6); h(self.b_sp, C['r'], "#fca5a5")
-        tk.Button(bf, text="↺", bg=C['c'], fg="white", font=F['bt'], relief="flat", width=5, pady=10, command=self._mv_rs).pack(side="left", padx=6)
+        self.b_st = tk.Button(bf, text="▶ START SESSION", bg=C['g'], fg=C['bg'], font=F['bt'], relief="flat", width=18, pady=10, command=self._mv_st); self.b_st.pack(side="left", padx=(15, 5)); h(self.b_st, C['g'], "#86efac")
+        self.b_sp = tk.Button(bf, text="■ STOP (SAVE)", bg=C['r'], fg=C['bg'], font=F['bt'], relief="flat", state="disabled", width=18, pady=10, command=self._mv_sp); self.b_sp.pack(side="left", padx=5); h(self.b_sp, C['r'], "#fca5a5")
+        tk.Button(bf, text="↺", bg=C['c'], fg="white", font=F['bt'], relief="flat", width=6, pady=10, command=self._mv_rs).pack(side="left", padx=(5, 15))
 
         self.m_res = {}
         for k, n, col in [("top","UPPER",C['t']), ("bottom","LOWER",C['b'])]:
