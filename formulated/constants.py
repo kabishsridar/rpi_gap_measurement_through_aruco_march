@@ -20,10 +20,10 @@ C_TEXT_MED= "#94a3b8"
 C_AMBER   = "#fbbf24"
 
 # Typography
-F_TITLE = ("Inter", 20, "bold")
-F_HEAD  = ("Inter", 18, "bold")
-F_BODY  = ("Inter", 16)
-F_SMALL = ("Inter", 14)
+F_TITLE = ("Inter", 16, "bold")
+F_HEAD  = ("Inter", 13, "bold")
+F_BODY  = ("Inter", 12)
+F_SMALL = ("Inter", 10)
 F_DATA  = ("Inter", 32, "bold")
 F_MONO  = ("Consolas", 18)
-F_BTN   = ("Inter", 14, "bold")
+F_BTN   = ("Inter", 15, "bold")

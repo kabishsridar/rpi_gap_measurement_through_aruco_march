@@ -139,18 +139,17 @@ def measurement_loop(app):
             for key in ["top", "bottom"]:
                 app.last_data[key].update({"dist": 0.0, "L_det": False, "R_det": False})
 
-        r_th, p_th, y_th = app.rot_threshold.get(), app.pitch_threshold.get(), app.yaw_threshold.get()
         for key, color in [("top", (0, 165, 255)), ("bottom", (255, 0, 255))]:
             d = app.last_data[key]
             issues = 0
             if not d["L_det"]: issues += 1
             if not d["R_det"]: issues += 1
             if d["L_det"]:
-                if abs(d["L_pit"]) > p_th: issues += 1
-                if abs(d["L_yaw"]) > y_th: issues += 1
+                if abs(d["L_pit"]) > app.pitch_threshold.get(): issues += 1
+                if abs(d["L_yaw"]) > app.yaw_threshold.get(): issues += 1
             if d["R_det"]:
-                if abs(d["R_pit"]) > p_th: issues += 1
-                if abs(d["R_yaw"]) > y_th: issues += 1
+                if abs(d["R_pit"]) > app.pitch_threshold.get(): issues += 1
+                if abs(d["R_yaw"]) > app.yaw_threshold.get(): issues += 1
 
             if d["dist"] > 0 and d.get("p1_px") is not None:
                 p1 = d["p1_px"]
@@ -159,18 +158,17 @@ def measurement_loop(app):
                 cv.circle(frame, p2, 6, (0, 255, 0), -1)
                 
                 # Draw Measurement Text
-                cv.putText(frame, f"{d['dist']:.2f}mm", (p2[0]+10, p2[1]), 0, 0.6, (255, 0, 255), 2)
+                cv.putText(frame, f"{d['dist']:.2f}mm", (p2[0]+15, p2[1]), 0, 0.7, (255, 0, 255), 2)
 
-                # Draw Issues Box (if any)
+                # Draw Issues Box (Red border, yellow text)
                 if issues > 0:
-                    mid_x = (p1[0] + p2[0]) // 2
-                    mid_y = (p1[1] + p2[1]) // 2
+                    mid_x, mid_y = (p1[0] + p2[0]) // 2, (p1[1] + p2[1]) // 2
                     txt = f"ISSUES: {issues}"
-                    (tw, th), _ = cv.getTextSize(txt, 0, 0.5, 2)
-                    bx, by, bw, bh = mid_x - tw//2 - 5, mid_y - 30 - th - 5, tw + 10, th + 10
-                    cv.rectangle(frame, (bx, by), (bx+bw, by+bh), (0, 0, 0), -1)
-                    cv.rectangle(frame, (bx, by), (bx+bw, by+bh), (0, 165, 255), 2)
-                    cv.putText(frame, txt, (bx+5, by+bh-7), 0, 0.5, (0, 255, 255), 2)
+                    (tw, th), _ = cv.getTextSize(txt, 0, 0.6, 2)
+                    bx, by, bw, bh = mid_x - tw//2 - 10, mid_y - 40 - th - 5, tw + 20, th + 10
+                    cv.rectangle(frame, (bx, by), (bx+bw, by+bh), (0,0,0), -1)
+                    cv.rectangle(frame, (bx, by), (bx+bw, by+bh), (0,0,255), 2)
+                    cv.putText(frame, txt, (bx+10, by+bh-8), 0, 0.6, (0,255,255), 2)
 
         app.current_frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
         app._cam_preview_frame = app.current_frame
