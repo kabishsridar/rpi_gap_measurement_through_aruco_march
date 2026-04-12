@@ -428,7 +428,7 @@ class MeasurementApp:
         f = "camera_params_2.npz" if self.fixed_side.get() == "Right" else "camera_params.npz"
         if os.path.exists(f): 
             d = np.load(f)
-            return d['camera_matrix'], d['dist_coeff']
+            return d['mtx'], d['dist']
         return np.eye(3), np.zeros(5)
 
     def _apply_cam(self, *_):
