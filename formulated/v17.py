@@ -38,10 +38,11 @@ class MeasurementApp:
         V = lambda v, t=tk.DoubleVar: t(value=v)
         self.size_top, self.size_bot = V(SZ), V(SZ)
         self.fixed_side, self.rot_threshold = tk.StringVar(value="Left"), V(12.0)
+        self.cam_ae, self.cam_exp, self.cam_gn = tk.BooleanVar(value=True), tk.IntVar(value=10000), tk.DoubleVar(value=2.0)
+        self.cam_awb, self.cam_awbm = tk.BooleanVar(value=True), tk.StringVar(value="Auto")
+        self.cam_br, self.cam_ct = tk.DoubleVar(value=0.0), tk.DoubleVar(value=1.0)
+        self.cam_sa, self.cam_sh = tk.DoubleVar(value=1.0), tk.DoubleVar(value=1.0)
         self.p_th, self.y_th, self.u_ang = V(10.0), V(10.0), tk.BooleanVar(value=False)
-        self.cam_ae, self.cam_awb = tk.BooleanVar(value=True), tk.BooleanVar(value=True)
-        self.cam_exp, self.cam_gain = tk.IntVar(value=10000), V(2.0)
-        self.cam_awbm, self.cam_br, self.cam_ct, self.cam_sa, self.cam_sh = tk.StringVar(value="Auto"), V(0.0), V(1.0), V(1.0), V(1.0)
         
         # State
         self.mv_state, self._last_sc, self.pc = "idle", 0, None
@@ -90,11 +91,11 @@ class MeasurementApp:
         self.mv_st_l = tk.Label(r, text="READY", font=F['h'], fg=C['m'], bg=C['bg']); self.mv_st_l.pack(pady=10)
         self.p_bar = ttk.Progressbar(r, length=380, maximum=N); self.p_bar.pack(pady=8)
         
-        bf = tk.Frame(r, bg=C['bg']); bf.pack(pady=20, fill="x")
+        bf = tk.Frame(r, bg=C['bg']); bf.pack(pady=10, fill="x")
         h = lambda b, n, h: (b.bind("<Enter>", lambda e: b.config(bg=h)), b.bind("<Leave>", lambda e: b.config(bg=n)))
-        self.b_st = tk.Button(bf, text="▶ START SESSION", bg=C['g'], fg=C['bg'], font=F['bt'], relief="flat", width=18, pady=10, command=self._mv_st); self.b_st.pack(side="left", padx=(15, 5)); h(self.b_st, C['g'], "#86efac")
-        self.b_sp = tk.Button(bf, text="■ STOP (SAVE)", bg=C['r'], fg=C['bg'], font=F['bt'], relief="flat", state="disabled", width=18, pady=10, command=self._mv_sp); self.b_sp.pack(side="left", padx=5); h(self.b_sp, C['r'], "#fca5a5")
-        tk.Button(bf, text="↺", bg=C['c'], fg="white", font=F['bt'], relief="flat", width=6, pady=10, command=self._mv_rs).pack(side="left", padx=(5, 15))
+        self.b_st = tk.Button(bf, text="▶ START", bg=C['g'], fg=C['bg'], font=F['bt'], relief="flat", width=12, pady=8, command=self._mv_st); self.b_st.pack(side="left", padx=(10, 2)); h(self.b_st, C['g'], "#86efac")
+        self.b_sp = tk.Button(bf, text="■ STOP", bg=C['r'], fg=C['bg'], font=F['bt'], relief="flat", state="disabled", width=12, pady=8, command=self._mv_sp); self.b_sp.pack(side="left", padx=2); h(self.b_sp, C['r'], "#fca5a5")
+        tk.Button(bf, text="↺", bg=C['c'], fg="white", font=F['bt'], relief="flat", width=4, pady=8, command=self._mv_rs).pack(side="left", padx=2)
 
         self.m_res = {}
         for k, n, col in [("top","UPPER",C['t']), ("bottom","LOWER",C['b'])]:
@@ -196,11 +197,10 @@ class MeasurementApp:
             e.bind("<Return>", _cmt); e.bind("<FocusOut>", _cmt)
         tk.Checkbutton(cr, text="AE", variable=self.cam_ae, bg=C['p'], fg=C['tx'], selectcolor=C['bg'], command=self._app).pack(fill="x")
         crow("EXP", self.cam_exp, 100, 66000, 100, "us")
-        # GAIN row removed as requested
         tk.Checkbutton(cr, text="AWB", variable=self.cam_awb, bg=C['p'], fg=C['tx'], selectcolor=C['bg'], command=self._app).pack(fill="x")
         wf = tk.Frame(cr, bg=C['p']); wf.pack(fill="x")
-        self.AWB_MAP = {"Auto": 0, "Tungsten": 1, "Fluorescent": 2, "Indoor": 3, "Daylight": 4, "Cloudy": 5}
-        for m in self.AWB_MAP.keys(): tk.Radiobutton(wf, text=m, variable=self.cam_awbm, value=m, bg=C['p'], fg=C['tx'], selectcolor=C['bg'], font=F['s'], command=self._app).pack(side="left")
+        self.AWB_MODES = {"Auto": 0, "Tungsten": 1, "Fluorescent": 2, "Indoor": 3, "Daylight": 4, "Cloudy": 5}
+        for m in self.AWB_MODES: tk.Radiobutton(wf, text=m, variable=self.cam_awbm, value=m, bg=C['p'], fg=C['tx'], font=("Inter", 8), command=self._app).pack(side="left")
         for l,v,lo,hi in [("BR",self.cam_br,-1,1),("CT",self.cam_ct,0,8),("SA",self.cam_sa,0,8),("SH",self.cam_sh,0,8)]: crow(l,v,lo,hi,0.1)
         tk.Button(cr, text="RESET", bg=C['r'], fg="white", font=F['bt'], relief="flat", command=self._r_cam).pack(pady=10, fill="x")
 
@@ -225,23 +225,24 @@ class MeasurementApp:
         self.wst.config(state="normal")
         self.wst.delete("1.0", tk.END)
         self.wst.config(state="disabled")
-    def _app(self):
+    def _app(self, *_):
         if not self.pc: return
+        ctrls = {}
+        ae_on = self.cam_ae.get()
+        ctrls["AeEnable"] = ae_on
+        if not ae_on:
+            ctrls["ExposureTime"] = int(self.cam_exp.get())
+            ctrls["AnalogueGain"] = float(self.cam_gn.get())
+        awb_on = self.cam_awb.get()
+        ctrls["AwbEnable"] = awb_on
+        if not awb_on:
+            ctrls["AwbMode"] = self.AWB_MODES.get(self.cam_awbm.get(), 0)
+        ctrls["Brightness"] = float(self.cam_br.get())
+        ctrls["Contrast"] = float(self.cam_ct.get())
+        ctrls["Saturation"] = float(self.cam_sa.get())
+        ctrls["Sharpness"] = float(self.cam_sh.get())
         try:
-            p = {
-                "AeEnable": bool(self.cam_ae.get()), 
-                "AwbEnable": bool(self.cam_awb.get()), 
-                "Brightness": float(self.cam_br.get()), 
-                "Contrast": float(self.cam_ct.get()), 
-                "Saturation": float(self.cam_sa.get()), 
-                "Sharpness": float(self.cam_sh.get())
-            }
-            if not p["AeEnable"]: 
-                p["ExposureTime"] = int(self.cam_exp.get())
-                p["AnalogueGain"] = float(self.cam_gain.get())
-            if not p["AwbEnable"]: 
-                p["AwbMode"] = self.AWB_MAP.get(self.cam_awbm.get(), 0)
-            self.pc.set_controls(p)
+            self.pc.set_controls(ctrls)
         except Exception as e:
             print(f"[CAM ERROR] {e}")
     def _r_cam(self): self.cam_ae.set(1); self.cam_awb.set(1); self.cam_br.set(0); self.cam_ct.set(1); self.cam_sa.set(1); self.cam_sh.set(1); self._app()

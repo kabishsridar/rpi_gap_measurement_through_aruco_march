@@ -52,14 +52,14 @@ class MeasurementApp:
 
         # ── Camera Vars ──
         self.cam_ae           = tk.BooleanVar(value=True)
-        self.cam_exposure     = tk.IntVar(value=10000)
-        self.cam_gain         = tk.DoubleVar(value=2.0)
-        self.cam_awb          = tk.BooleanVar(value=True)
-        self.cam_awb_mode     = tk.StringVar(value="Auto")
-        self.cam_brightness   = tk.DoubleVar(value=0.0)
-        self.cam_contrast     = tk.DoubleVar(value=1.0)
-        self.cam_saturation   = tk.DoubleVar(value=1.0)
-        self.cam_sharpness    = tk.DoubleVar(value=1.0)
+        self.cam_exposure   = tk.IntVar(value=10000)
+        self.cam_gain       = tk.DoubleVar(value=2.0)
+        self.cam_awb        = tk.BooleanVar(value=True)
+        self.cam_awb_mode   = tk.StringVar(value="Auto")
+        self.cam_brightness = tk.DoubleVar(value=0.0)
+        self.cam_contrast   = tk.DoubleVar(value=1.0)
+        self.cam_saturation = tk.DoubleVar(value=1.0)
+        self.cam_sharpness  = tk.DoubleVar(value=1.0)
         
         self.pc = None
         self._cam_preview_frame = None
@@ -129,10 +129,11 @@ class MeasurementApp:
             else: self.lbl_dist_bot, self.lbl_k_bot = dl, kl
         tk.Label(right, text="READY FOR INITIAL CAPTURE", font=F_HEAD, fg=C_TEXT_MED, bg=C_BG).pack(pady=(15, 2))
         self.mv_prog_bar = ttk.Progressbar(right, length=380, maximum=COLLECT_N, mode="determinate"); self.mv_prog_bar.pack(pady=4)
-        bf = tk.Frame(right, bg=C_BG); bf.pack(pady=20, fill="x")
-        self.btn_start = tk.Button(bf, text="▶ START SESSION", bg=C_GREEN, fg=C_BG, font=F_BTN, width=18, pady=10, relief="flat", command=self._mv_start); self.btn_start.pack(side="left", padx=(15, 5))
-        self.btn_stop = tk.Button(bf, text="■ STOP (SAVE)", bg=C_RED, fg=C_BG, font=F_BTN, width=18, pady=10, relief="flat", state="disabled", command=self._mv_stop); self.btn_stop.pack(side="left", padx=5)
-        self.btn_reset = tk.Button(bf, text="↺", bg=C_CARD, fg="white", font=F_BTN, width=6, pady=10, relief="flat", command=self._mv_reset); self.btn_reset.pack(side="left", padx=(5, 15))
+        # Movement Buttons Row
+        bf = tk.Frame(right, bg=C_BG); bf.pack(pady=10, fill="x")
+        self.btn_start = tk.Button(bf, text="▶ START", bg=C_GREEN, fg=C_BG, font=F_BTN, width=12, pady=8, relief="flat", command=self._mv_start); self.btn_start.pack(side="left", padx=(10, 2))
+        self.btn_stop = tk.Button(bf, text="■ STOP", bg=C_RED, fg=C_BG, font=F_BTN, width=12, pady=8, relief="flat", state="disabled", command=self._mv_stop); self.btn_stop.pack(side="left", padx=2)
+        self.btn_reset = tk.Button(bf, text="↺", bg=C_CARD, fg="white", font=F_BTN, width=4, pady=8, relief="flat", command=self._mv_reset); self.btn_reset.pack(side="left", padx=2)
         for key, title, col in [("top", "UPPER", C_TOP), ("bottom", "LOWER", C_BOT)]:
             row = tk.Frame(right, bg=C_PANEL, bd=1, relief="solid"); row.pack(fill="x", padx=12, pady=4)
             dl = tk.Label(row, text="—", font=F_DATA, fg=C_ACCENT, bg=C_PANEL); dl.pack(side="right", padx=15, pady=8)
@@ -160,7 +161,7 @@ class MeasurementApp:
         tab = ttk.Frame(self.tabs); self.tabs.add(tab, text=" ⚙  Machine Configuration ")
         sc = tk.Frame(tab, bg=C_BG); sc.pack(fill="both", expand=True, padx=60, pady=20)
         rf = tk.LabelFrame(sc, text=" Reference Side (Fixed ArUco) ", bg=C_PANEL, fg=C_TEXT_BRT, font=F_HEAD, padx=20, pady=10); rf.pack(fill="x", pady=10)
-        for choice in ["Left", "Right"]: tk.Radiobutton(rf, text=choice, variable=self.fixed_side, value=choice, bg=C_PANEL, fg=C_TEXT_BRT, font=F_BODY, selectcolor=C_BG).pack(side="left", padx=30)
+        for choice in ["Left", "Right"]: tk.Radiobutton(rf, text=choice, variable=self.fixed_side, value=choice, bg=C_PANEL, fg=C_TEXT_BRT, font=F_BODY, selectcolor=C_GREEN).pack(side="left", padx=30)
         def sld(l, v, c, lo, hi):
             f = tk.LabelFrame(sc, text=f" {l} ", bg=C_PANEL, fg=c, font=F_HEAD, padx=20, pady=5); f.pack(fill="x", pady=5)
             tk.Scale(f, from_=lo, to=hi, resolution=0.1, orient="horizontal", variable=v, bg=C_PANEL, length=800, fg=C_TEXT_MED, highlightthickness=0, font=F_SMALL).pack(side="left", padx=20)
@@ -211,8 +212,8 @@ class MeasurementApp:
         tk.Checkbutton(af, text="Hardware Auto White Balance", variable=self.cam_awb, bg=C_PANEL, fg=C_TEXT_MED, selectcolor=C_BG, command=self._apply_cam).pack(padx=10, pady=5)
         mf = tk.Frame(af, bg=C_PANEL); mf.pack(fill="x", pady=2)
         tk.Label(mf, text="Mode:", font=F_SMALL, bg=C_PANEL, fg=C_TEXT_MED).pack(side="left", padx=5)
-        self.AWB_MAP = {"Auto": 0, "Tungsten": 1, "Fluorescent": 2, "Indoor": 3, "Daylight": 4, "Cloudy": 5}
-        for m in self.AWB_MAP.keys(): tk.Radiobutton(mf, text=m, variable=self.cam_awb_mode, value=m, bg=C_PANEL, fg=C_TEXT_MED, font=("Inter", 8), command=self._apply_cam).pack(side="left")
+        self.AWB_MODES = {"Auto": 0, "Tungsten": 1, "Fluorescent": 2, "Indoor": 3, "Daylight": 4, "Cloudy": 5}
+        for m in self.AWB_MODES: tk.Radiobutton(mf, text=m, variable=self.cam_awb_mode, value=m, bg=C_PANEL, fg=C_TEXT_MED, font=("Inter", 8), command=self._apply_cam).pack(side="left")
         crw("Brightness", self.cam_brightness, -1.0, 1.0, 0.05); crw("Contrast", self.cam_contrast, 0.0, 8.0, 0.1); crw("Saturation", self.cam_saturation, 0.0, 8.0, 0.1); crw("Sharpness", self.cam_sharpness, 0.0, 8.0, 0.1)
         tk.Button(cr, text="↺ Restore Factory Defaults", bg=C_RED, fg=C_BG, font=F_BTN, command=self._reset_cam).pack(fill="x", pady=10)
 
@@ -266,23 +267,23 @@ class MeasurementApp:
                 for k, il, fl, dl in [("top", self.mv_init_lbl_top, self.mv_final_lbl_top, self.mv_delta_lbl_top), ("bottom", self.mv_init_lbl_bot, self.mv_final_lbl_bot, self.mv_delta_lbl_bot)]:
                     di, df = self.mv_dist_init[k], self.mv_dist_final[k]; il.config(text=f"INIT: {di:.3f} mm"); fl.config(text=f"FINAL: {df:.3f} mm"); dl.config(text=f"{df-di:+.3f} mm")
 
-    def _apply_cam(self):
-        if not self.pc: return
+    def _apply_cam(self, *_):
+        if self.pc is None: return
+        ctrls = {}
+        ae_on = self.cam_ae.get()
+        ctrls["AeEnable"] = ae_on
+        if not ae_on:
+            ctrls["ExposureTime"] = int(self.cam_exposure.get())
+            ctrls["AnalogueGain"] = float(self.cam_gain.get())
+        awb_on = self.cam_awb.get()
+        ctrls["AwbEnable"] = awb_on
+        if not awb_on:
+            ctrls["AwbMode"] = self.AWB_MODES.get(self.cam_awb_mode.get(), 0)
+        ctrls["Brightness"] = float(self.cam_brightness.get())
+        ctrls["Contrast"] = float(self.cam_contrast.get())
+        ctrls["Saturation"] = float(self.cam_saturation.get())
+        ctrls["Sharpness"] = float(self.cam_sharpness.get())
         try:
-            ctrls = {
-                "Brightness": float(self.cam_brightness.get()),
-                "Contrast": float(self.cam_contrast.get()),
-                "Saturation": float(self.cam_saturation.get()),
-                "Sharpness": float(self.cam_sharpness.get()),
-                "AeEnable": bool(self.cam_ae.get()),
-                "AwbEnable": bool(self.cam_awb.get())
-            }
-            if not ctrls["AeEnable"]:
-                ctrls["ExposureTime"] = int(self.cam_exposure.get())
-                ctrls["AnalogueGain"] = float(self.cam_gain.get())
-            if not ctrls["AwbEnable"]:
-                ctrls["AwbMode"] = self.AWB_MAP.get(self.cam_awb_mode.get(), 0)
-            
             self.pc.set_controls(ctrls)
         except Exception as e:
             print(f"[CAM ERROR] {e}")
