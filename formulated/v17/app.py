@@ -134,12 +134,14 @@ class MeasurementApp:
 
         tk.Frame(right, bg=C_CARD, height=2).pack(fill="x", padx=12, pady=15)
         for key, title, col in [("top", "UPPER", C_TOP), ("bottom", "LOWER", C_BOT)]:
-            row = tk.Frame(right, bg=C_PANEL, bd=1, relief="solid"); row.pack(fill="x", padx=12, pady=8)
+            row = tk.Frame(right, bg=C_PANEL, bd=1, relief="solid"); row.pack(fill="x", padx=12, pady=4)
             tk.Label(row, text=title, font=F_HEAD, fg=col, bg=C_PANEL, width=8).pack(side="left", padx=12, pady=8)
             info = tk.Frame(row, bg=C_PANEL); info.pack(side="left", expand=True)
             init_lbl  = tk.Label(info, text="INIT: —", font=F_BODY, fg=C_TEXT_MED, bg=C_PANEL, anchor="w"); init_lbl.pack(fill="x", padx=8)
             final_lbl = tk.Label(info, text="FINAL: —", font=F_BODY, fg=C_TEXT_MED, bg=C_PANEL, anchor="w"); final_lbl.pack(fill="x", padx=8)
-            delta_lbl = tk.Label(row, text="—", font=F_DATA, fg=C_ACCENT, bg=C_PANEL); delta_lbl.pack(side="right", padx=20, pady=12)
+            delta_lbl = tk.Label(row, text="—",
+                                 font=F_DATA, fg=C_ACCENT, bg=C_PANEL)
+            delta_lbl.pack(side="right", padx=40, pady=8)
             if key == "top": self.mv_init_lbl_top, self.mv_final_lbl_top, self.mv_delta_lbl_top = init_lbl, final_lbl, delta_lbl
             else: self.mv_init_lbl_bot, self.mv_final_lbl_bot, self.mv_delta_lbl_bot = init_lbl, final_lbl, delta_lbl
         tk.Frame(right, bg=C_BG).pack(fill="both", expand=True)
@@ -336,7 +338,23 @@ class MeasurementApp:
                     X_3d = np.array([d["X"]], dtype=np.float64).reshape(1,1,3)
                     if d["X"][2]>0: p_proj, _ = cv.projectPoints(X_3d, np.zeros(3), np.zeros(3), K, dc); p2 = tuple(p_proj[0].ravel().astype(int))
                     else: p2 = d["p2_px"]
-                    cv.line(frame, d["p1_px"], p2, color, 3); cv.circle(frame, p2, 6, (0,255,0), -1); cv.putText(frame, f"{k.upper()}: {d['dist']:.2f}mm", (d["p1_px"][0], d["p1_px"][1]-12), 0, 0.6, color, 2)
+                    # Warning badge lines
+                    p_th, y_th, r_th = self.pitch_threshold.get(), self.yaw_threshold.get(), self.rot_threshold.get()
+                    wlines = []
+                    max_rot = d.get("rot_2d", 0.0)
+                    if max_rot > r_th: wlines.append(f"ROT {max_rot:.1f}deg")
+                    lp = d.get("L_pitch", 0.0); rp = d.get("R_pitch", 0.0)
+                    if abs(lp) > p_th: wlines.append(f"L-PITCH {lp:+.1f}d")
+                    if abs(rp) > p_th: wlines.append(f"R-PITCH {rp:+.1f}d")
+                    ly = d.get("L_yaw", 0.0); ry = d.get("R_yaw", 0.0)
+                    if abs(ly) > y_th: wlines.append(f"L-YAW {ly:+.1f}d")
+                    if abs(ry) > y_th: wlines.append(f"R-YAW {ry:+.1f}d")
+                    if wlines:
+                        bx1 = max(0, d["p1_px"][0] - 5); by1 = min(RESOLUTION[1] - 30, d["p1_px"][1] + 22)
+                        cv.rectangle(frame, (bx1, by1), (bx1 + 130, by1 + 25), (20, 20, 20), -1)
+                        cv.rectangle(frame, (bx1, by1), (bx1 + 130, by1 + 25), (0, 30, 180), 2)
+                        cv.putText(frame, f"ISSUES: {len(wlines)}", (bx1 + 8, by1 + 18), cv.FONT_HERSHEY_SIMPLEX, 0.45, (0, 220, 255), 2)
+
             self.current_frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB); self._cam_preview_frame = self.current_frame
 
     def _update_warnings(self):
