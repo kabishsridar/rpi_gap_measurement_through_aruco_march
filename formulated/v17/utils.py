@@ -1,22 +1,14 @@
-import numpy as np
 import math
 
 def rotation_to_euler(R):
-    sy = math.sqrt(R[0, 0] * R[0, 0] + R[1, 0] * R[1, 0])
-    singular = sy < 1e-6
-    if not singular:
-        x = math.atan2(R[2, 1], R[2, 2])
-        y = math.atan2(-R[2, 0], sy)
-        z = math.atan2(R[1, 0], R[0, 0])
+    """Decompose an OpenCV 3×3 rotation matrix into (pitch, yaw, roll) degrees."""
+    sy = math.sqrt(R[0, 0] ** 2 + R[1, 0] ** 2)
+    if sy > 1e-6:
+        roll  = math.degrees(math.atan2( R[2, 1],  R[2, 2]))
+        pitch = math.degrees(math.atan2(-R[2, 0],  sy))
+        yaw   = math.degrees(math.atan2( R[1, 0],  R[0, 0]))
     else:
-        x = math.atan2(-R[1, 2], R[1, 1])
-        y = math.atan2(-R[2, 0], sy)
-        z = 0
-    return math.degrees(x), math.degrees(y), math.degrees(z)
-
-def load_calibration(file):
-    try:
-        data = np.load(file)
-        return data['mtx'], data['dist']
-    except:
-        return None, None
+        roll  = math.degrees(math.atan2(-R[1, 2],  R[1, 1]))
+        pitch = math.degrees(math.atan2(-R[2, 0],  sy))
+        yaw   = 0.0
+    return pitch, yaw, roll

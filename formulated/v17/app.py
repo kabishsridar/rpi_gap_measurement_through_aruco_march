@@ -3,13 +3,14 @@ from tkinter import ttk, messagebox
 import cv2 as cv
 import numpy as np
 import threading
-import time
+import math
 import os
+import time
 from datetime import datetime
+from PIL import Image, ImageTk
 
 from constants import *
-from utils import load_calibration
-from measurement_engine import MeasurementEngine
+from utils import rotation_to_euler
 import log
 
 class MeasurementApp:
@@ -19,80 +20,111 @@ class MeasurementApp:
         self.root.geometry("1600x960")
         self.root.configure(bg=C_BG)
 
-        self.engine = MeasurementEngine()
-        self.running = True
-        self.paused = False
-        
-        # State
-        log.init_log()
-        self.mv_state = "ready"
-        self._init_data = {"top": None, "bottom": None}
+        # ── Measurement vars ──────────────────────────────────────────────────
+        self.size_top         = tk.DoubleVar(value=DEFAULT_MARKER_SIZE)
+        self.size_bot         = tk.DoubleVar(value=DEFAULT_MARKER_SIZE)
+        self.fixed_side       = tk.StringVar(value="Left")
+        self.rot_threshold    = tk.DoubleVar(value=12.0)
+        self.pitch_threshold  = tk.DoubleVar(value=10.0)
+        self.yaw_threshold    = tk.DoubleVar(value=10.0)
+        self.use_angle_thresh = tk.BooleanVar(value=False)
+
+        # ── Camera vars ───────────────────────────────────────────────────────
+        self.cam_ae         = tk.BooleanVar(value=True)
+        self.cam_exposure   = tk.IntVar(value=10000)
+        self.cam_gain       = tk.DoubleVar(value=2.0)
+        self.cam_awb        = tk.BooleanVar(value=True)
+        self.cam_awb_mode   = tk.StringVar(value="Auto")
+        self.cam_brightness = tk.DoubleVar(value=0.0)
+        self.cam_contrast   = tk.DoubleVar(value=1.0)
+        self.cam_saturation = tk.DoubleVar(value=1.0)
+        self.cam_sharpness  = tk.DoubleVar(value=1.0)
+        self.pc             = None
+        self._cam_preview_frame = None
+
+        # ── Movement monitor state ────────────────────────────────────────────
+        self.mv_state       = "idle"
+        self.mv_init_buf    = {"top": [], "bottom": []}
+        self.mv_final_buf   = {"top": [], "bottom": []}
+        self.mv_dist_init   = {"top": None, "bottom": None}
+        self.mv_dist_final  = {"top": None, "bottom": None}
+        self._last_sc       = 0
+
+        # ── Shared data ──
+        def _empty():
+            return {
+                "A": (0,0,0), "X": (0,0,0), "TR": (0,0,0), "BR": (0,0,0),
+                "B": (0,0,0), "C": (0,0,0), "dist": 0.0, "k": 0.0,
+                "L_A": (0.0, 0.0), "R_A": (0.0, 0.0), "rot_2d": 0.0,
+                "L_z": 0.0, "R_z": 0.0, "p1_px": None, "p2_px": None,
+                "L_pitch": 0.0, "L_yaw": 0.0, "R_pitch": 0.0, "R_yaw": 0.0,
+                "L_det": False, "R_det": False,
+            }
+
         self.last_data = {
-            "top": self._empty(), "bottom": self._empty(),
-            "lighting": {"status": "ok", "mean": 0, "std": 0},
-            "session_count": 0
+            "top": _empty(), "bottom": _empty(), "session_count": 0,
+            "lighting": {"status": "no_frame", "mean": 0.0, "std": 0.0},
         }
-        self._last_sc = 0
 
-        # UI references for results
-        self.ui_results = {}
+        self.is_running    = True
+        self.current_frame = None
 
-        # Styles
         self._style()
         self.setup_ui()
-
-        # Threading
-        self.thread = threading.Thread(target=self.measurement_loop, daemon=True)
-        self.thread.start()
-
-        # Loops
-        self._gui_update_loop()
-        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
-
-    def _empty(self):
-        return {
-            "dist": 0.0, "k": 0.5, "rot_2d": 0.0,
-            "L_det": False, "R_det": False,
-            "L_pitch": 0.0, "L_yaw": 0.0, "R_pitch": 0.0, "R_yaw": 0.0,
-            "L_z": 0, "R_z": 0, "L_A": 0, "R_A": 0,
-            "A": None, "X": None, "p1_px": None, "p2_px": None
-        }
+        threading.Thread(target=self.measurement_loop, daemon=True).start()
+        self.update_gui_loop()
 
     def _style(self):
-        style = ttk.Style()
-        style.theme_use("clam")
-        style.configure("TNotebook", background=C_BG, borderwidth=0)
-        style.configure("TNotebook.Tab", background=C_CARD, foreground=C_TEXT_MED,
-                        font=F_HEAD, padding=[20, 10], borderwidth=0)
-        style.map("TNotebook.Tab", background=[("selected", C_PANEL)], foreground=[("selected", C_ACCENT)])
+        s = ttk.Style()
+        s.theme_use('clam')
+        s.configure("TNotebook", background=C_BG, borderwidth=0)
+        s.configure("TNotebook.Tab", background=C_PANEL, foreground=C_TEXT_MED,
+                    padding=[25, 12], font=F_HEAD, borderwidth=0)
+        s.map("TNotebook.Tab", background=[("selected", C_ACCENT)], foreground=[("selected", C_BG)])
+        s.configure("TFrame", background=C_BG)
+        s.configure("TProgressbar", thickness=24, background=C_ACCENT, troughcolor=C_PANEL, borderwidth=0)
 
     def setup_ui(self):
         self.tabs = ttk.Notebook(self.root)
-        self.tabs.pack(fill="both", expand=True)
-
+        self.tabs.pack(fill='both', expand=True, padx=8, pady=8)
         self._build_tab_live()
         self._build_tab_tele()
         self._build_tab_settings()
         self._build_tab_cam()
 
+    def _card(self, parent, title, title_color, **pack_kw):
+        f = tk.LabelFrame(parent, text=f"  {title.upper()}  ", font=F_HEAD,
+                          fg=title_color, bg=C_PANEL, bd=2, relief="flat", 
+                          highlightbackground=title_color, highlightthickness=1, padx=20, pady=12)
+        f.pack(**pack_kw)
+        return f
+
     def _build_tab_live(self):
         tab = ttk.Frame(self.tabs)
-        self.tabs.add(tab, text=" 🔴  Live Measurement ")
-        
-        # Camera Feed
-        self.cam_frame = tk.Label(tab, bg="black")
-        self.cam_frame.pack(side="left", fill="both", expand=True, padx=20, pady=20)
-        
-        # Right Panel
-        right = tk.Frame(tab, bg=C_BG)
-        right.pack(side="right", fill="both", expand=True, padx=12, pady=10)
+        self.tabs.add(tab, text=" 📏  Movement ")
+        tab.configure(style="TFrame")
 
-        # Movement Monitor Controls
+        left = tk.Frame(tab, bg=C_BG); left.pack(side="left", padx=16, pady=16)
+        self.canvas = tk.Canvas(left, width=960, height=540, bg="black", highlightthickness=1, highlightbackground=C_PANEL)
+        self.canvas.pack()
+
+        warn_f = tk.Frame(left, bg=C_PANEL, bd=1, relief="solid"); warn_f.pack(fill="x", pady=(12, 0))
+        self.warn_strip = tk.Text(warn_f, height=6, font=F_HEAD, fg=C_ACCENT, bg=C_PANEL, padx=15, pady=12, bd=0, highlightthickness=0, wrap="word", cursor="arrow", state="disabled")
+        self.warn_strip.pack(side="left", fill="both", expand=True)
+        warn_scroll = tk.Scrollbar(warn_f, orient="vertical", command=self.warn_strip.yview, width=12, bg=C_PANEL, troughcolor=C_BG, bd=0)
+        warn_scroll.pack(side="right", fill="y"); self.warn_strip.config(yscrollcommand=warn_scroll.set)
+
+        right = tk.Frame(tab, bg=C_BG); right.pack(side="right", fill="both", expand=True, padx=12, pady=10)
+
+        for key, title, col in [("top", "UPPER SENSOR", C_TOP), ("bottom", "LOWER SENSOR", C_BOT)]:
+            card = self._card(right, title, col, fill="x", pady=6, padx=12)
+            dl = tk.Label(card, text="0.000 mm", font=F_DATA, fg=C_GREEN, bg=C_PANEL); dl.pack(pady=(8, 2))
+            kl = tk.Label(card, text="INTERSECT RATIO: 0.0000", font=F_SMALL, fg=C_TEXT_MED, bg=C_PANEL); kl.pack(pady=(0, 8))
+            if key == "top": self.lbl_dist_top, self.lbl_k_top = dl, kl
+            else: self.lbl_dist_bot, self.lbl_k_bot = dl, kl
+
         stf = tk.Frame(right, bg=C_BG); stf.pack(fill="x", pady=(15, 0))
-        self.mv_status_lbl = tk.Label(stf, text="READY FOR INITIAL CAPTURE", font=F_HEAD, 
-                                      fg=C_TEXT_MED, bg=C_BG, wraplength=400, justify="center")
-        self.mv_status_lbl.pack(pady=(2, 2))
-        
+        self.mv_status_lbl = tk.Label(stf, text="READY FOR INITIAL CAPTURE", font=F_HEAD, fg=C_TEXT_MED, bg=C_BG, wraplength=380, justify="center"); self.mv_status_lbl.pack(pady=(2, 2))
         prog_f = tk.Frame(right, bg=C_BG); prog_f.pack(fill="x", padx=12)
         self.mv_prog_lbl = tk.Label(prog_f, text="", font=F_HEAD, fg=C_GREEN, bg=C_BG); self.mv_prog_lbl.pack()
         self.mv_prog_bar = ttk.Progressbar(prog_f, length=380, maximum=COLLECT_N, mode="determinate"); self.mv_prog_bar.pack(pady=4)
@@ -102,38 +134,21 @@ class MeasurementApp:
         def add_hover(btn, normal_bg, hover_bg):
             btn.bind("<Enter>", lambda e: btn.config(bg=hover_bg)); btn.bind("<Leave>", lambda e: btn.config(bg=normal_bg))
 
-        self.btn_reset = tk.Button(btn_f, text="↺", bg=C_CARD, fg="white", activebackground=C_TEXT_MED,
-                                   font=F_BTN, relief="flat", width=5, pady=12, bd=0, cursor="hand2", 
-                                   command=self._mv_reset); self.btn_reset.pack(side="right", padx=6); add_hover(self.btn_reset, C_CARD, C_TEXT_MED)
-        
-        self.btn_start = tk.Button(btn_f, text="▶ START SESSION", bg=C_GREEN, fg=C_BG, 
-                                   activebackground="#86efac", command=self._mv_start, **btn_cfg)
-        self.btn_start.pack(side="left", expand=True, fill="x", padx=6); add_hover(self.btn_start, C_GREEN, "#86efac")
-        
-        self.btn_stop = tk.Button(btn_f, text="■ STOP (SAVE)", bg=C_RED, fg=C_BG, 
-                                  activebackground="#fca5a5", state="disabled", command=self._mv_stop, **btn_cfg)
-        self.btn_stop.pack(side="left", expand=True, fill="x", padx=6); add_hover(self.btn_stop, C_RED, "#fca5a5")
+        self.btn_reset = tk.Button(btn_f, text="↺", bg=C_CARD, fg="white", font=F_BTN, relief="flat", width=5, pady=12, bd=0, cursor="hand2", command=self._mv_reset); self.btn_reset.pack(side="right", padx=6); add_hover(self.btn_reset, C_CARD, C_TEXT_MED)
+        self.btn_start = tk.Button(btn_f, text="▶ START SESSION", bg=C_GREEN, fg=C_BG, activebackground="#86efac", command=self._mv_start, **btn_cfg); self.btn_start.pack(side="left", expand=True, fill="x", padx=6); add_hover(self.btn_start, C_GREEN, "#86efac")
+        self.btn_stop = tk.Button(btn_f, text="■ STOP (SAVE)", bg=C_RED, fg=C_BG, activebackground="#fca5a5", state="disabled", command=self._mv_stop, **btn_cfg); self.btn_stop.pack(side="left", expand=True, fill="x", padx=6); add_hover(self.btn_stop, C_RED, "#fca5a5")
 
         tk.Frame(right, bg=C_CARD, height=2).pack(fill="x", padx=12, pady=15)
-        
-        # Result Cards
         for key, title, col in [("top", "UPPER", C_TOP), ("bottom", "LOWER", C_BOT)]:
             row = tk.Frame(right, bg=C_PANEL, bd=1, relief="solid"); row.pack(fill="x", padx=12, pady=4)
-            # DELTA packed first on right to guarantee space
             dl = tk.Label(row, text="—", font=F_DATA, fg=C_ACCENT, bg=C_PANEL, anchor="e"); dl.pack(side="right", padx=15, pady=8)
             tk.Label(row, text=title, font=F_HEAD, fg=col, bg=C_PANEL, width=8).pack(side="left", padx=12, pady=8)
             info = tk.Frame(row, bg=C_PANEL); info.pack(side="left", fill="x", expand=True)
             il = tk.Label(info, text="INIT: —", font=F_BODY, fg=C_TEXT_MED, bg=C_PANEL, anchor="w"); il.pack(fill="x", padx=8)
             fl = tk.Label(info, text="FINAL: —", font=F_BODY, fg=C_TEXT_MED, bg=C_PANEL, anchor="w"); fl.pack(fill="x", padx=8)
-            self.ui_results[key] = (il, fl, dl)
-
+            if key == "top": self.mv_init_lbl_top, self.mv_final_lbl_top, self.mv_delta_lbl_top = il, fl, dl
+            else: self.mv_init_lbl_bot, self.mv_final_lbl_bot, self.mv_delta_lbl_bot = il, fl, dl
         tk.Frame(right, bg=C_BG).pack(fill="both", expand=True)
-        
-        # Warnings Strip at bottom left
-        self.warn_strip = tk.Text(tab, height=5, bg="#020617", fg=C_AMBER, font=F_SMALL, 
-                                  relief="flat", padx=10, pady=5); self.warn_strip.pack(side="bottom", fill="x", padx=20, pady=(0, 20))
-        self.lbl_lighting_cam = tk.Label(self.cam_frame, text="LIGHTING PROFILE: NOMINAL", font=F_SMALL, 
-                                        fg=C_GREEN, bg="black"); self.lbl_lighting_cam.place(x=10, y=10)
 
     def _build_tab_tele(self):
         tab = ttk.Frame(self.tabs); self.tabs.add(tab, text=" 🛸  Dual Telemetry ")
@@ -141,8 +156,7 @@ class MeasurementApp:
         self.tele_vars = {"top": {}, "bottom": {}}
         v_show = ["A", "X", "TR", "BR", "B", "C", "L_ROL", "L_ROT", "L_Z", "L_PITCH", "L_YAW", "R_ROL", "R_ROT", "R_Z", "R_PITCH", "R_YAW"]
         for key, title, col in [("top", "TOP", C_TOP), ("bottom", "BOTTOM", C_BOT)]:
-            cf = tk.LabelFrame(mtf, text=f" {title} PAIR TELEMETRY ", font=F_TITLE, fg=col, bg=C_BG, padx=15, pady=15)
-            cf.pack(side="left", fill="both", expand=True, padx=20, pady=20)
+            cf = tk.LabelFrame(mtf, text=f" {title} PAIR TELEMETRY ", font=F_TITLE, fg=col, bg=C_BG, padx=15, pady=15); cf.pack(side="left", fill="both", expand=True, padx=20, pady=20)
             for v_name in v_show:
                 row = tk.Frame(cf, bg=C_PANEL, highlightbackground=C_CARD, highlightthickness=1); row.pack(fill="x", padx=10, pady=5)
                 tk.Label(row, text=v_name, font=F_HEAD, fg=C_TEXT_MED, bg=C_PANEL).pack(side="left", padx=10, pady=5)
@@ -150,212 +164,249 @@ class MeasurementApp:
                 self.tele_vars[key][v_name] = sv
 
     def _build_tab_settings(self):
-        tab = ttk.Frame(self.tabs); self.tabs.add(tab, text=" ⚙  Settings ")
-        sf = tk.Frame(tab, bg=C_BG, padx=30, pady=30); sf.pack(fill="both", expand=True)
-        
-        self.size_top = tk.DoubleVar(value=MARKER_SIZE_TOP)
-        self.size_bot = tk.DoubleVar(value=MARKER_SIZE_BOT)
-        self.pitch_threshold = tk.DoubleVar(value=PITCH_THRESH)
-        self.yaw_threshold = tk.DoubleVar(value=YAW_THRESH)
-        self.rot_threshold = tk.DoubleVar(value=ROT_THRESH)
-        self.use_angle_thresh = tk.BooleanVar(value=True)
+        tab = ttk.Frame(self.tabs); self.tabs.add(tab, text=" ⚙  Machine Configuration ")
+        sc = tk.Frame(tab, bg=C_BG); sc.pack(fill="both", expand=True, padx=80, pady=40)
+        rf = tk.LabelFrame(sc, text=" Reference Side (Fixed ArUco) ", bg=C_PANEL, fg=C_TEXT_BRT, font=F_HEAD, padx=20, pady=10); rf.pack(fill="x", pady=(0, 12))
+        for choice in ["Left", "Right"]:
+            tk.Radiobutton(rf, text=choice, variable=self.fixed_side, value=choice, bg=C_PANEL, fg=C_TEXT_BRT, selectcolor=C_BG, activebackground=C_PANEL, font=F_BODY).pack(side="left", padx=24)
 
-        for title, var, min_v, max_v in [
-            ("Upper Marker Size (mm)", self.size_top, 10, 50),
-            ("Lower Marker Size (mm)", self.size_bot, 10, 50),
-            ("Warning Tilt (Pitch)", self.pitch_threshold, 1, 30),
-            ("Warning Tilt (Yaw)", self.yaw_threshold, 1, 30),
-            ("Warning In-Plane Rotation", self.rot_threshold, 1, 20)
-        ]:
-            row = tk.Frame(sf, bg=C_BG); row.pack(fill="x", pady=10)
-            tk.Label(row, text=title, font=F_HEAD, fg=C_TEXT_BRT, bg=C_BG, width=25, anchor="w").pack(side="left")
-            tk.Scale(row, from_=min_v, to=max_v, resolution=0.1, variable=var, orient="horizontal", 
-                     bg=C_BG, fg=C_TEXT_MED, highlightthickness=0, length=400).pack(side="left", padx=20)
+        def create_slider(label, var, color, lo, hi, res=0.1):
+            f = tk.LabelFrame(sc, text=f" {label} ", bg=C_PANEL, font=F_HEAD, fg=color, padx=25, pady=12); f.pack(fill="x", pady=10)
+            sl = tk.Scale(f, from_=lo, to=hi, resolution=res, orient="horizontal", variable=var, bg=C_PANEL, fg=C_TEXT_BRT, troughcolor=C_BG, highlightthickness=0, length=600, font=F_BODY); sl.pack(side="left", padx=20)
+            ent = tk.Entry(f, width=10, bg=C_BG, fg=C_ACCENT, insertbackground=C_TEXT_BRT, bd=0, font=F_MONO); ent.insert(0, f"{var.get():.1f}"); ent.pack(side="left")
+            def sync(*_):
+                if self.root.focus_get() != ent: ent.delete(0, tk.END); ent.insert(0, f"{var.get():.1f}")
+            var.trace_add("write", sync)
+            def commit(*_):
+                try: val = float(ent.get()); var.set(max(lo, min(hi, val))); ent.config(fg=C_ACCENT)
+                except: sync()
+                self.root.focus()
+            ent.bind("<FocusIn>", lambda e: (ent.config(fg=C_TEXT_BRT), ent.select_range(0, tk.END))); ent.bind("<Return>", commit); ent.bind("<FocusOut>", commit)
+            return sl
+
+        create_slider("Upper Pair Marker Size (mm)", self.size_top, C_TOP, 30, 100)
+        create_slider("Bottom Pair Marker Size (mm)", self.size_bot, C_BOT, 30, 100)
+        self.rot_slider = create_slider("Rotation Threshold °", self.rot_threshold, C_TEXT_BRT, 0, 45)
+        create_slider("Pitch Threshold °", self.pitch_threshold, "#8e44ad", 1, 45, res=0.5)
+        create_slider("Yaw Threshold °", self.yaw_threshold, "#16a085", 1, 45, res=0.5)
+
+        tog_f = tk.LabelFrame(sc, text=" Measurement Logic Options ", bg=C_PANEL, font=F_HEAD, fg=C_TEXT_BRT, padx=25, pady=15); tog_f.pack(fill="x", pady=10)
+        def _update(*_):
+            on = self.use_angle_thresh.get()
+            t_lbl.config(text="ON — Use Threshold" if on else "OFF — Always High-Precision", fg=C_GREEN if on else C_RED)
+            self.rot_slider.config(state="normal" if on else "disabled")
+            c.delete("all"); bg = C_GREEN if on else "#b2bec3"; c.create_oval(4, 4, 76, 36, fill=bg, outline=""); cx = 58 if on else 22; c.create_oval(cx-14, 6, cx+14, 34, fill="white", outline="")
         
-        tk.Checkbutton(sf, text=" Use Rotation Threshold for Result Filtering", 
-                       variable=self.use_angle_thresh, font=F_HEAD, fg=C_GREEN, bg=C_BG, 
-                       selectcolor=C_PANEL, activebackground=C_BG).pack(fill="x", pady=20)
+        tr = tk.Frame(tog_f, bg=C_PANEL); tr.pack(fill="x"); c = tk.Canvas(tr, width=80, height=40, bg=C_PANEL, highlightthickness=0, cursor="hand2"); c.pack(side="left", padx=(0, 20))
+        t_lbl = tk.Label(tr, text="", font=F_HEAD, bg=C_PANEL, anchor="w"); t_lbl.pack(side="left", fill="x", expand=True)
+        c.bind("<Button-1>", lambda e: (self.use_angle_thresh.set(not self.use_angle_thresh.get()), _update())); _update()
 
     def _build_tab_cam(self):
-        tab = ttk.Frame(self.tabs); self.tabs.add(tab, text=" 📽  Camera Config ")
-        cf = tk.Frame(tab, bg=C_BG, padx=30, pady=30); cf.pack(fill="both", expand=True)
-        tk.Label(cf, text="Manual Camera Control Overrides", font=F_TITLE, fg=C_ACCENT, bg=C_BG).pack(anchor="w", pady=(0, 20))
-        # Note: In Windows/Desktop, many Picamera2 controls won't apply.
-        tk.Label(cf, text="Advanced camera parameters for Raspberry Pi PiCamera2 integration.", 
-                 font=F_BODY, fg=C_TEXT_MED, bg=C_BG).pack(anchor="w")
+        tab = ttk.Frame(self.tabs); self.tabs.add(tab, text=" 📷  Camera Controls ")
+        cl = tk.Frame(tab, bg=C_BG); cl.pack(side="left", fill="both", expand=True, padx=8, pady=8); cr = tk.Frame(tab, bg=C_BG); cr.pack(side="right", fill="y", padx=8, pady=8, ipadx=4)
+        tk.Label(cl, text="Live Camera Preview", font=F_TITLE, fg=C_TEXT_BRT, bg=C_BG).pack(pady=(15, 0))
+        self.cam_canvas = tk.Canvas(cl, width=800, height=480, bg="black", highlightthickness=2, highlightbackground=C_PANEL); self.cam_canvas.pack(padx=20, pady=20)
+        self.lbl_cam_status = tk.Label(cl, text="⏳ Waiting for camera…", font=F_TITLE, fg=C_AMBER, bg=C_BG); self.lbl_cam_status.pack(pady=8)
+        self.lbl_lighting_cam = tk.Label(cl, text="", font=F_HEAD, fg=C_TEXT_MED, bg=C_BG); self.lbl_lighting_cam.pack(pady=5)
+
+        tk.Label(cr, text="Sensor Configuration", font=F_TITLE, fg=C_TEXT_BRT, bg=C_BG).pack(pady=(20, 10))
+        def crw(l, v, lo, hi, r, u=""):
+            rf = tk.LabelFrame(cr, text=f" {l} ", bg=C_PANEL, font=F_HEAD, fg=C_TEXT_BRT, padx=12, pady=8); rf.pack(fill="x", padx=10, pady=5)
+            i = tk.Frame(rf, bg=C_PANEL); i.pack(fill="x")
+            tk.Scale(i, from_=lo, to=hi, resolution=r, orient="horizontal", variable=v, bg=C_PANEL, fg=C_TEXT_BRT, troughcolor=C_BG, highlightthickness=0, length=300, font=F_SMALL, command=lambda _: self._apply_cam()).pack(side="left")
+            tk.Entry(i, textvariable=v, width=8, bg=C_BG, fg=C_ACCENT, bd=0, font=F_MONO).pack(side="left", padx=8)
+            if u: tk.Label(i, text=u, bg=C_PANEL, font=F_SMALL, fg=C_TEXT_MED).pack(side="left")
+
+        ae_f = tk.LabelFrame(cr, text=" Exposure Control ", bg=C_PANEL, font=F_HEAD, fg=C_TEXT_BRT, padx=12, pady=8); ae_f.pack(fill="x", padx=10, pady=5)
+        tk.Checkbutton(ae_f, text="Enable Software Auto-Exposure", variable=self.cam_ae, bg=C_PANEL, fg=C_TEXT_BRT, selectcolor=C_BG, activebackground=C_PANEL, font=F_BODY, command=self._apply_cam).pack(anchor="w")
+        crw("Exposure Time", self.cam_exposure, 100, 66000, 100, "us")
+        awb_f = tk.LabelFrame(cr, text=" White Balance ", bg=C_PANEL, font=F_HEAD, fg=C_TEXT_BRT, padx=12, pady=8); awb_f.pack(fill="x", padx=10, pady=5)
+        tk.Checkbutton(awb_f, text="Hardware AWB", variable=self.cam_awb, bg=C_PANEL, fg=C_TEXT_BRT, selectcolor=C_BG, activebackground=C_PANEL, font=F_BODY, command=self._apply_cam).pack(anchor="w")
+        wr = tk.Frame(awb_f, bg=C_PANEL); wr.pack(fill="x", pady=5); tk.Label(wr, text="Mode:", bg=C_PANEL, fg=C_TEXT_MED, font=F_BODY).pack(side="left")
+        for m in AWB_MODES: tk.Radiobutton(wr, text=m, variable=self.cam_awb_mode, value=m, bg=C_PANEL, fg=C_TEXT_BRT, selectcolor=C_BG, activebackground=C_PANEL, font=F_SMALL, command=self._apply_cam).pack(side="left", padx=5)
+
+        crw("Brightness", self.cam_brightness, -1.0, 1.0, 0.05); crw("Contrast", self.cam_contrast, 0.0, 8.0, 0.1); crw("Saturation", self.cam_saturation, 0.0, 8.0, 0.1); crw("Sharpness", self.cam_sharpness, 0.0, 8.0, 0.1)
+        tk.Button(cr, text="↺ Factory Reset", font=F_BTN, bg=C_RED, fg="white", activebackground="#c0392b", relief="flat", padx=15, pady=12, command=self._reset_cam).pack(pady=20, fill="x", padx=10)
 
     def _mv_start(self):
-        self.mv_state = "collecting_init"; self.btn_start.config(state="disabled")
+        if self.mv_state in ("idle", "done"):
+            self.mv_state = "collecting_init"; self.mv_init_buf = {"top": [], "bottom": []}; self.btn_start.config(state="disabled"); self.btn_stop.config(state="disabled")
+            self.mv_prog_bar["value"] = 0; self.mv_status_lbl.config(text=f"Collecting initial... (0 / {COLLECT_N})", fg=C_AMBER)
+
     def _mv_stop(self):
-        self.mv_state = "collecting_final"; self.btn_stop.config(state="disabled")
+        if self.mv_state == "ready":
+            self.mv_state = "collecting_final"; self.mv_final_buf = {"top": [], "bottom": []}; self.btn_stop.config(state="disabled")
+            self.mv_prog_bar["value"] = 0; self.mv_status_lbl.config(text=f"Collecting final... (0 / {COLLECT_N})", fg=C_AMBER)
+
     def _mv_reset(self):
-        self.mv_state = "ready"; self._init_data = {"top": None, "bottom": None}
-        self.btn_start.config(state="normal"); self.btn_stop.config(state="disabled")
-        self.mv_status_lbl.config(text="READY FOR INITIAL CAPTURE", fg=C_TEXT_MED); self.mv_prog_bar["value"]=0; self.mv_prog_lbl.config(text="")
-        for k in ["top", "bottom"]: il, fl, dl = self.ui_results[k]; il.config(text="INIT: —"); fl.config(text="FINAL: —"); dl.config(text="—", fg=C_ACCENT)
+        self.mv_state = "idle"; self.mv_init_buf = {"top": [], "bottom": []}; self.mv_final_buf = {"top": [], "bottom": []}
+        self.mv_dist_init = {"top": None, "bottom": None}; self.mv_dist_final = {"top": None, "bottom": None}
+        self.btn_start.config(state="normal"); self.btn_stop.config(state="disabled"); self.mv_prog_bar["value"] = 0; self.mv_prog_lbl.config(text="")
+        self.mv_status_lbl.config(text="Press START to capture initial gap", fg="#dfe6e9")
+        for il, fl, dl in [ (self.mv_init_lbl_top, self.mv_final_lbl_top, self.mv_delta_lbl_top), (self.mv_init_lbl_bot, self.mv_final_lbl_bot, self.mv_delta_lbl_bot) ]:
+            il.config(text="Init: —", fg=C_TEXT_MED); fl.config(text="Final: —", fg=C_TEXT_MED); dl.config(text="—", fg=C_ACCENT)
 
-    def measurement_loop(self):
-        # Load Calibrations
-        K1, d1 = load_calibration(CALIB_FILE_1); K2, d2 = load_calibration(CALIB_FILE_2)
-        cap = cv.VideoCapture(0); cap.set(cv.CAP_PROP_FRAME_WIDTH, RESOLUTION[0]); cap.set(cv.CAP_PROP_FRAME_HEIGHT, RESOLUTION[1])
-        
-        bufs = {"top": [], "bottom": []}
-        l_s = l_u = time.time()*1000
+    def update_gui_loop(self):
+        if self.current_frame is not None:
+            try:
+                frame_960 = cv.resize(self.current_frame, (960, 540))
+                img = ImageTk.PhotoImage(Image.fromarray(cv.cvtColor(frame_960, cv.COLOR_BGR2RGB)))
+                self.canvas.create_image(0,0, anchor="nw", image=img); self.canvas.image = img
+            except: pass
+        if self._cam_preview_frame is not None:
+            try:
+                frame_800 = cv.resize(self._cam_preview_frame, (800, 480))
+                img2 = ImageTk.PhotoImage(Image.fromarray(cv.cvtColor(frame_800, cv.COLOR_BGR2RGB)))
+                self.cam_canvas.create_image(0,0, anchor="nw", image=img2); self.cam_canvas.image = img2
+                self.lbl_cam_status.config(text="🟢 Live Feed Active", fg=C_GREEN)
+            except: pass
 
-        while self.running:
-            if self.paused: time.sleep(0.1); continue
-            ret, frame = cap.read()
-            if not ret: time.sleep(0.1); continue
-            
-            curr = time.time()*1000
-            l_info, gray = self.engine.analyze_lighting(frame); self.last_data["lighting"] = l_info
-            top_m, bot_m = self.engine.detect_markers(gray)
-            
-            # Reset detection flags
-            for k in ["top", "bottom"]: self.last_data[k]["L_det"] = False; self.last_data[k]["R_det"] = False
+        self._mv_tick(); self._update_telemetry(); self._update_warnings()
+        self.root.after(30, self.update_gui_loop)
 
-            def proc(pair_list, pk, size, K, dc):
-                if len(pair_list) < 2: return
-                m1, m2 = sorted(pair_list, key=lambda x: x["x"])
-                is_rf = (pk == "bottom")
-                # L/R logic based on row
-                left_m, right_m = (m1, m2)
-                p_pts, roll, z, pitch, yaw = self.engine.get_pose(left_m["c"], K, dc, size)
-                p2_pts, r2, z2, pitch2, yaw2 = self.engine.get_pose(right_m["c"], K, dc, size)
-                
-                # Formula inputs...
-                Sit, Sib, Sot = self.engine.inner_outer_pts(p_pts, not is_rf)
-                Tit, Tib, _   = self.engine.inner_outer_pts(p2_pts, is_rf)
-                p1_px = tuple(((m1["c"][1 if not is_rf else 0] + m1["c"][2 if not is_rf else 3]) / 2).astype(int))
-                p2_px = tuple(((m2["c"][0 if not is_rf else 1] + m2["c"][3 if not is_rf else 2]) / 2).astype(int))
-                
-                bufs[pk].append({
-                    "A": (Sit+Sib)/2.0, "TR": Sit, "BR": Sib, "TL_ref": Sot, "B": Tit, "C": Tib, "rot": max(self.engine.inplane_rot(m1["c"]), self.engine.inplane_rot(m2["c"])),
-                    "L_z": z, "R_z": z2, "L_p": pitch, "L_y": yaw, "R_p": pitch2, "R_y": yaw2, "p1": p1_px, "p2": p2_px
-                })
-                self.last_data[pk]["L_det"] = True; self.last_data[pk]["R_det"] = True
-
-            # Sample every 100ms
-            if (curr - l_s) >= 100:
-                if top_m: proc(top_m, "top", self.size_top.get(), K1, d1)
-                if bot_m: proc(bot_m, "bottom", self.size_bot.get(), K2, d2)
-                l_s = curr
-
-            # Live Drawing every frame
-            for pair, k, col in [(top_m, "top", (0, 165, 255)), (bot_m, "bottom", (255, 0, 255))]:
-                if len(pair) == 2:
-                    m1, m2 = sorted(pair, key=lambda x: x["x"])
-                    is_rf = (k == "bottom"); c1, c2 = m1["c"], m2["c"]
-                    p1 = tuple(((c1[1 if not is_rf else 0] + c1[2 if not is_rf else 3]) / 2).astype(int))
-                    p2 = tuple(((c2[0 if not is_rf else 1] + c2[3 if not is_rf else 2]) / 2).astype(int))
-                    cv.line(frame, p1, p2, col, 2)
-
-            # 200ms snappy update
-            if (curr - l_u) >= 200:
-                for k in ["top", "bottom"]:
-                    if bufs[k]:
-                        s = bufs[k]
-                        aA  = np.mean([x["A"]  for x in s], axis=0)
-                        aTR = np.mean([x["TR"] for x in s], axis=0)
-                        aTL = np.mean([x["TL_ref"] for x in s], axis=0)
-                        aB = np.mean([x["B"] for x in s], axis=0)
-                        aC = np.mean([x["C"] for x in s], axis=0)
-                        
-                        v_raw = aTR - aTL; v = v_raw / np.linalg.norm(v_raw) if np.linalg.norm(v_raw)>0 else np.zeros(3)
-                        w = aC - aB; u = aB - aA; den = np.dot(v,v)*np.dot(w,w) - np.dot(v,w)**2
-                        if abs(den)>1e-6: kv = np.clip(((np.dot(v,w)*np.dot(u,v)) - (np.dot(v,v)*np.dot(u,w)))/den, 0, 1); aX = aB + kv*w
-                        else: aX = (aB+aC)/2.0; kv = 0.5
-                        dist = np.linalg.norm(aX-aA)
-                        
-                        last = s[-1]
-                        self.last_data[k].update({
-                            "A": aA, "X": aX, "dist": dist, "k": kv, "rot_2d": np.mean([x["rot"] for x in s]),
-                            "L_pitch": np.mean([x["L_p"] for x in s]), "L_yaw": np.mean([x["L_y"] for x in s]),
-                            "R_pitch": np.mean([x["R_p"] for x in s]), "R_yaw": np.mean([x["R_y"] for x in s]),
-                            "L_z": np.mean([x["L_z"] for x in s]), "R_z": np.mean([x["R_z"] for x in s]),
-                            "p1_px": last["p1"], "p2_px": last["p2"]
-                        })
-                        self.last_data["session_count"] += 1; bufs[k].clear()
-                        # Final Drawing points
-                        if dist > 0:
-                            cv.circle(frame, last["p2"], 6, (0, 255, 0), -1)
-                            cv.putText(frame, f"{k.upper()}: {dist:.2f}mm", (last["p1"][0], last["p1"][1]-12), 0, 0.6, (0, 220, 255), 2)
-                l_u = curr
-
-            self.current_frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
-
-    def _gui_update_loop(self):
-        if hasattr(self, "current_frame"):
-            img = tk.PhotoImage(data=cv.imencode('.png', cv.cvtColor(self.current_frame, cv.COLOR_RGB2BGR))[1].tobytes())
-            self.cam_frame.config(image=img); self.cam_frame.image = img
-        self._update_movement_monitor(); self._update_telemetry(); self._update_warnings()
-        self.root.after(30, self._gui_update_loop)
-
-    def _update_movement_monitor(self):
+    def _mv_tick(self):
         sc = self.last_data["session_count"]
         if sc == self._last_sc: return
         self._last_sc = sc
 
-        p_top = len(self._init_data.get("top_buf", [])) if self.mv_state == "collecting_init" else 0
-        p_bot = len(self._init_data.get("bot_buf", [])) if self.mv_state == "collecting_init" else 0
-        
         if self.mv_state == "collecting_init":
-            self.mv_status_lbl.config(text="CAPTURING INITIAL POSITION...", fg=C_ACCENT)
-            if "top_buf" not in self._init_data: self._init_data["top_buf"] = []; self._init_data["bot_buf"] = []
-            if self.last_data["top"]["L_det"]: self._init_data["top_buf"].append(self.last_data["top"]["dist"])
-            if self.last_data["bottom"]["L_det"]: self._init_data["bot_buf"].append(self.last_data["bottom"]["dist"])
-            self.mv_prog_bar["value"] = len(self._init_data["top_buf"])
-            if len(self._init_data["top_buf"]) >= COLLECT_N:
-                self._init_data["top"] = np.median(self._init_data["top_buf"])
-                self._init_data["bottom"] = np.median(self._init_data["bot_buf"])
-                self.mv_state = "ready_for_final"; self.btn_stop.config(state="normal")
-                self.mv_status_lbl.config(text="INITIAL GAP CAPTURED - MEASURE NOW", fg=C_GREEN)
-                il_t, _, _ = self.ui_results["top"]; il_t.config(text=f"INIT: {self._init_data['top']:.3f} mm")
-                il_b, _, _ = self.ui_results["bottom"]; il_b.config(text=f"INIT: {self._init_data['bottom']:.3f} mm")
-
-        elif self.mv_state == "ready_for_final":
             for k in ["top", "bottom"]:
-                _, _, dl = self.ui_results[k]
-                delta = self.last_data[k]["dist"] - (self._init_data[k] if self._init_data[k] else 0)
-                dl.config(text=f"{'+' if delta>=0 else ''}{delta:.3f} mm", fg=C_GREEN if abs(delta)<0.5 else C_RED)
+                d = self.last_data[k]["dist"]
+                if d > 0: self.mv_init_buf[k].append(d)
+            n = min(len(self.mv_init_buf["top"]), len(self.mv_init_buf["bottom"]))
+            self.mv_prog_bar["value"] = n; self.mv_prog_lbl.config(text=f"Reading {n} / {COLLECT_N}")
+            if n >= COLLECT_N:
+                self.mv_dist_init = {"top": float(np.mean(self.mv_init_buf["top"][:COLLECT_N])), "bottom": float(np.mean(self.mv_init_buf["bottom"][:COLLECT_N]))}
+                self.mv_state = "ready"; self.btn_stop.config(state="normal"); self.mv_prog_bar["value"] = 0; self.mv_prog_lbl.config(text="")
+                self.mv_status_lbl.config(text="✅ Initial captured — move panel, then STOP", fg=C_GREEN)
+                self.mv_init_lbl_top.config(text=f"Init: {self.mv_dist_init['top']:.3f} mm"); self.mv_init_lbl_bot.config(text=f"Init: {self.mv_dist_init['bottom']:.3f} mm")
 
         elif self.mv_state == "collecting_final":
-            if "final_buf_t" not in self._init_data: self._init_data["final_buf_t"] = []; self._init_data["final_buf_b"] = []
-            if self.last_data["top"]["L_det"]: self._init_data["final_buf_t"].append(self.last_data["top"]["dist"])
-            if self.last_data["bottom"]["L_det"]: self._init_data["final_buf_b"].append(self.last_data["bottom"]["dist"])
-            self.mv_prog_bar["value"] = len(self._init_data["final_buf_t"])
-            if len(self._init_data["final_buf_t"]) >= COLLECT_N:
-                f_t = np.median(self._init_data["final_buf_t"]); f_b = np.median(self._init_data["final_buf_b"])
-                d_t, d_b = f_t - self._init_data["top"], f_b - self._init_data["bottom"]
-                _, fl_t, dl_t = self.ui_results["top"]; fl_t.config(text=f"FINAL: {f_t:.3f} mm"); dl_t.config(text=f"{'+' if d_t>=0 else ''}{d_t:.3f} mm")
-                _, fl_b, dl_b = self.ui_results["bottom"]; fl_b.config(text=f"FINAL: {f_b:.3f} mm"); dl_b.config(text=f"{'+' if d_b>=0 else ''}{d_b:.3f} mm")
-                self.mv_state = "finished"; self.mv_status_lbl.config(text="MEASUREMENT COMPLETE - PRESS RESET", fg=C_AMBER)
+            for k in ["top", "bottom"]:
+                d = self.last_data[k]["dist"]
+                if d > 0: self.mv_final_buf[k].append(d)
+            n = min(len(self.mv_final_buf["top"]), len(self.mv_final_buf["bottom"]))
+            self.mv_prog_bar["value"] = n; self.mv_prog_lbl.config(text=f"Reading {n} / {COLLECT_N}")
+            if n >= COLLECT_N:
+                self.mv_dist_final = {"top": float(np.mean(self.mv_final_buf["top"][:COLLECT_N])), "bottom": float(np.mean(self.mv_final_buf["bottom"][:COLLECT_N]))}
+                self.mv_state = "done"; self.btn_start.config(state="normal"); self.mv_prog_bar["value"] = 0; self.mv_prog_lbl.config(text="")
+                self.mv_status_lbl.config(text="✅ Measurement complete — press RESET", fg=C_GREEN)
+                for key, il, fl, dl in [ ("top", self.mv_init_lbl_top, self.mv_final_lbl_top, self.mv_delta_lbl_top), ("bottom", self.mv_init_lbl_bot, self.mv_final_lbl_bot, self.mv_delta_lbl_bot) ]:
+                    di, df = self.mv_dist_init[key], self.mv_dist_final[key]; delta = df - di
+                    il.config(text=f"Init: {di:.3f} mm"); fl.config(text=f"Final: {df:.3f} mm")
+                    sign = "+" if delta >= 0 else ""; color = C_RED if delta > 0.5 else (C_GREEN if delta < -0.5 else C_ACCENT)
+                    dl.config(text=f"{sign}{delta:.3f} mm", fg=color)
 
     def _update_telemetry(self):
         for k in ["top", "bottom"]:
             d = self.last_data[k]
-            self.tele_vars[k]["L_ROT"].set(f"{d['rot_2d']:.1f}°")
-            self.tele_vars[k]["L_Z"].set(f"{d['L_z']:.1f}")
-            self.tele_vars[k]["L_PITCH"].set(f"{d['L_pitch']:.1f}°")
-            self.tele_vars[k]["L_YAW"].set(f"{d['L_yaw']:.1f}°")
-            self.tele_vars[k]["R_PITCH"].set(f"{d['R_pitch']:.1f}°")
-            self.tele_vars[k]["R_YAW"].set(f"{d['R_yaw']:.1f}°")
+            v = self.tele_vars[k]
+            v["L_ROT"].set(f"{d['rot_2d']:.1f}°"); v["L_Z"].set(f"{d['L_z']:.1f}"); v["L_PITCH"].set(f"{d['L_pitch']:.1f}°"); v["L_YAW"].set(f"{d['L_yaw']:.1f}°")
+            v["R_PITCH"].set(f"{d['R_pitch']:.1f}°"); v["R_YAW"].set(f"{d['R_yaw']:.1f}°"); v["R_Z"].set(f"{d['R_z']:.1f}")
 
     def _update_warnings(self):
         p_th, y_th, r_th = self.pitch_threshold.get(), self.yaw_threshold.get(), self.rot_threshold.get(); strip = []
         for k in ["top", "bottom"]:
             d = self.last_data[k]
-            if not d["L_det"]: strip.append(f"[{k.upper()}] L-marker not detected")
-            if not d["R_det"]: strip.append(f"[{k.upper()}] R-marker not detected")
+            if not d["L_det"]: strip.append(f"[{k.upper()}] Left Missing")
+            if not d["R_det"]: strip.append(f"[{k.upper()}] Right Missing")
             if d["rot_2d"] > r_th: strip.append(f"[{k.upper()}] Rotation {d['rot_2d']:.1f}°")
-            lp, rp = d.get("L_pitch", 0), d.get("R_pitch", 0)
-            if abs(lp)>p_th: strip.append(f"[{k.upper()}] L-Pitch {lp:+.1f}°")
-            if abs(rp)>p_th: strip.append(f"[{k.upper()}] R-Pitch {rp:+.1f}°")
+            lp, rp = abs(d["L_pitch"]), abs(d["R_pitch"])
+            if lp > p_th: strip.append(f"[{k.upper()}] L-Pitch high"); if rp > p_th: strip.append(f"[{k.upper()}] R-Pitch high")
         
         self.warn_strip.config(state="normal"); self.warn_strip.delete("1.0", tk.END)
-        if strip: self.warn_strip.insert(tk.END, "![!] ACTIVE ALERTS:\n" + "\n".join([f" • {x}" for x in strip]))
+        if strip: self.warn_strip.insert(tk.END, "![!] ALERTS:\n" + "\n".join([f" • {x}" for x in strip]))
         else: self.warn_strip.insert(tk.END, "[OK] SYSTEM NOMINAL")
         self.warn_strip.config(state="disabled")
 
-    def on_close(self):
-        self.running = False; self.root.destroy()
+    def load_calib(self):
+        f = "camera_params_2.npz" if self.fixed_side.get() == "Right" else "camera_params.npz"
+        if os.path.exists(f): 
+            d = np.load(f); return d['mtx'], d['dist']
+        return np.eye(3), np.zeros(5)
+
+    def _apply_cam(self, *_):
+        if self.pc:
+            c = {"AeEnable": self.cam_ae.get(), "AwbEnable": self.cam_awb.get(), "Brightness": self.cam_brightness.get(), "Contrast": self.cam_contrast.get()}
+            if not self.cam_ae.get(): c["ExposureTime"] = self.cam_exposure.get()
+            try: self.pc.set_controls(c)
+            except: pass
+
+    def _reset_cam(self):
+        self.cam_ae.set(True); self.cam_exposure.set(10000); self.cam_brightness.set(0.0); self.cam_contrast.set(1.0); self._apply_cam()
+
+    def measurement_loop(self):
+        try:
+            from picamera2 import Picamera2
+            pc = Picamera2(); pc.configure(pc.create_video_configuration(main={"size": RESOLUTION, "format": "RGB888"})); pc.start(); self.pc = pc
+        except: return
+
+        detector = cv.aruco.ArucoDetector(cv.aruco.getPredefinedDictionary(ARUCO_DICT), cv.aruco.DetectorParameters())
+        log.init_log()
+        bufs = {"top": [], "bottom": []}; l_s = l_u = time.time()*1000
+
+        while self.is_running:
+            K, dist_c = self.load_calib()
+            try: frame = cv.cvtColor(pc.capture_array(), cv.COLOR_RGB2BGR)
+            except: continue
+            
+            gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+            self.last_data["lighting"] = {"status": "ok", "mean": np.mean(gray), "std": np.std(gray)}
+            
+            corners, ids, _ = detector.detectMarkers(gray)
+            curr = time.time()*1000
+
+            if ids is not None and len(ids) >= 1:
+                m_data = []
+                for i in range(len(ids)):
+                    c = corners[i][0]; m_data.append({"c": c, "y": np.mean(c[:, 1]), "x": np.mean(c[:, 0])})
+                m_data.sort(key=lambda m: m["y"])
+                top_m, bot_m = m_data[:2], m_data[2:]
+
+                def proc(pair, pk, size):
+                    if len(pair) < 2: self.last_data[pk]["L_det"] = False; return
+                    m1, m2 = sorted(pair, key=lambda x: x["x"])
+                    is_rf = (pk == "bottom")
+                    
+                    def get_p(c):
+                        obj = np.array([[-size/2, size/2, 0], [size/2, size/2, 0], [size/2, -size/2, 0], [-size/2, -size/2, 0]], dtype=np.float32)
+                        _, rv, tv = cv.solvePnP(obj, c, K, dist_c); R, _ = cv.Rodrigues(rv)
+                        p, y, r = rotation_to_euler(R); return np.array([R @ pt + tv.ravel() for pt in obj]), p, y, float(tv[2,0])
+                    
+                    p1s, p1, y1, z1 = get_p(m1["c"]); p2s, p2, y2, z2 = get_p(m2["c"])
+                    
+                    idx = np.argsort(p1s[:, 0]); sit, sib = (p1s[idx[2:]] if not is_rf else p1s[idx[:2]])[np.argsort((p1s[idx[2:]] if not is_rf else p1s[idx[:2]])[:, 1])]
+                    idx2 = np.argsort(p2s[:, 0]); tit, tib = (p2s[idx2[:2]] if not is_rf else p2s[idx2[2:]])[np.argsort((p2s[idx2[:2]] if not is_rf else p2s[idx2[2:]])[:, 1])]
+                    
+                    px1 = tuple(((m1["c"][1 if not is_rf else 0] + m1["c"][2 if not is_rf else 3]) / 2).astype(int))
+                    px2 = tuple(((m2["c"][0 if not is_rf else 1] + m2["c"][3 if not is_rf else 2]) / 2).astype(int))
+                    
+                    bufs[pk].append({"A": (sit+sib)/2, "TR": sit, "TL": p1s[idx[:2]][0], "B": tit, "C": tib, "rot": 0, "L_p": p1, "L_y": y1, "L_z": z1, "R_p": p2, "R_y": y2, "R_z": z2, "p1": px1, "p2": px2})
+                    self.last_data[pk]["L_det"] = True; self.last_data[pk]["R_det"] = True
+
+                if (curr - l_s) >= 100:
+                    proc(top_m, "top", self.size_top.get()); proc(bot_m, "bottom", self.size_bot.get()); l_s = curr
+
+                for p, k, col in [(top_m, "top", (0, 165, 255)), (bot_m, "bottom", (255, 0, 255))]:
+                    if len(p) == 2:
+                        m1, m2 = sorted(p, key=lambda x: x["x"]); is_rf = (k == "bottom")
+                        px1 = tuple(((m1["c"][1 if not is_rf else 0] + m1["c"][2 if not is_rf else 3]) / 2).astype(int))
+                        px2 = tuple(((m2["c"][0 if not is_rf else 1] + m2["c"][3 if not is_rf else 2]) / 2).astype(int))
+                        cv.line(frame, px1, px2, col, 2)
+
+            if (curr - l_u) >= 200:
+                for k in ["top", "bottom"]:
+                    if bufs[k]:
+                        s = bufs[k]; aA = np.mean([x["A"] for x in s], axis=0); aTR = np.mean([x["TR"] for x in s], axis=0); aTL = np.mean([x["TL"] for x in s], axis=0); aB = np.mean([x["B"] for x in s], axis=0); aC = np.mean([x["C"] for x in s], axis=0)
+                        v = (aTR-aTL)/np.linalg.norm(aTR-aTL); w = aC-aB; u = aB-aA; den = np.dot(v,v)*np.dot(w,w)-np.dot(v,w)**2
+                        kv = np.clip(((np.dot(v,w)*np.dot(u,v)) - (np.dot(v,v)*np.dot(u,w)))/den, 0, 1) if abs(den)>1e-6 else 0.5
+                        dist = np.linalg.norm(aB + kv*w - aA)
+                        l = s[-1]; self.last_data[k].update({"dist": dist, "k": kv, "L_pitch": np.mean([x["L_p"] for x in s]), "L_yaw": np.mean([x["L_y"] for x in s]), "R_pitch": np.mean([x["R_p"] for x in s]), "R_yaw": np.mean([x["R_y"] for x in s]), "L_z": np.mean([x["L_z"] for x in s]), "R_z": np.mean([x["R_z"] for x in s]), "p1_px": l["p1"], "p2_px": l["p2"]})
+                        self.last_data["session_count"] += 1; bufs[k].clear()
+                l_u = curr
+            self.current_frame = frame
+
+    def on_close(self): self.is_running = False; self.root.destroy()
+
+if __name__ == "__main__":
+    root = tk.Tk(); app = MeasurementApp(root); root.mainloop()
