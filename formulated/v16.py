@@ -47,7 +47,7 @@ F_TITLE = ("Inter", 16, "bold")      # Modern font fallback
 F_HEAD  = ("Inter", 13, "bold")
 F_BODY  = ("Inter", 12)
 F_SMALL = ("Inter", 10)
-F_DATA  = ("Inter", 32, "bold")      # Scaled for perfect fit
+F_DATA  = ("Inter", 28, "bold")      # Optimized for perfect fit
 F_MONO  = ("Consolas", 13)
 F_BTN   = ("Inter", 14, "bold")
 
@@ -303,26 +303,23 @@ class MeasurementApp:
         
         for key, title, col in [("top", "UPPER", C_TOP), ("bottom", "LOWER", C_BOT)]:
             row = tk.Frame(right, bg=C_PANEL, bd=1, relief="solid")
-            row.pack(fill="x", padx=12, pady=8)
-            tk.Label(row, text=title, font=F_HEAD,
-                     fg=col, bg=C_PANEL, width=8).pack(side="left", padx=12, pady=8)
-            info = tk.Frame(row, bg=C_PANEL); info.pack(side="left", expand=True)
-            init_lbl  = tk.Label(info, text="INIT: —",
-                                 font=F_BODY, fg=C_TEXT_MED, bg=C_PANEL, anchor="w")
-            init_lbl.pack(fill="x", padx=8)
-            final_lbl = tk.Label(info, text="FINAL: —",
-                                 font=F_BODY, fg=C_TEXT_MED, bg=C_PANEL, anchor="w")
-            final_lbl.pack(fill="x", padx=8)
-            delta_lbl = tk.Label(row, text="—",
-                                 font=F_DATA, fg=C_ACCENT, bg=C_PANEL)
-            delta_lbl.pack(side="right", padx=20, pady=12)
+            row.pack(fill="x", padx=12, pady=4)
+            
+            # DELTA packed first on RIGHT to guarantee space
+            dl = tk.Label(row, text="—", font=F_DATA, fg=C_ACCENT, bg=C_PANEL, anchor="e")
+            dl.pack(side="right", padx=15, pady=8)
+            
+            tk.Label(row, text=title, font=F_HEAD, fg=col, bg=C_PANEL, width=8).pack(side="left", padx=12, pady=8)
+            info = tk.Frame(row, bg=C_PANEL); info.pack(side="left", fill="x", expand=True)
+            il = tk.Label(info, text="INIT: —", font=F_BODY, fg=C_TEXT_MED, bg=C_PANEL, anchor="w")
+            il.pack(fill="x", padx=8)
+            fl = tk.Label(info, text="FINAL: —", font=F_BODY, fg=C_TEXT_MED, bg=C_PANEL, anchor="w")
+            fl.pack(fill="x", padx=8)
+            
             if key == "top":
-                self.mv_init_lbl_top  = init_lbl
-                self.mv_final_lbl_top = final_lbl
-                self.mv_delta_lbl_top = delta_lbl
+                self.mv_init_lbl_top, self.mv_final_lbl_top, self.mv_delta_lbl_top = il, fl, dl
             else:
-                self.mv_init_lbl_bot  = init_lbl
-                self.mv_final_lbl_bot = final_lbl
+                self.mv_init_lbl_bot, self.mv_final_lbl_bot, self.mv_delta_lbl_bot = il, fl, dl
                 self.mv_delta_lbl_bot = delta_lbl
 
         # Spacer at bottom to keep rows centered/filling space
@@ -871,7 +868,7 @@ class MeasurementApp:
                     l_s = curr
 
                 # ── 1-second averaging window (v14-identical + new fields) ──
-                if (curr - l_u) >= 1000:
+                if (curr - l_u) >= 200:
                     for key in ["top", "bottom"]:
                         if buffers[key]:
                             s = buffers[key]

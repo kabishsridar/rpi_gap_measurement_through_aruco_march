@@ -133,17 +133,16 @@ class MeasurementApp:
         self.btn_stop = tk.Button(btn_f, text="■ STOP (SAVE)", bg=C_RED, fg=C_BG, activebackground="#fca5a5", state="disabled", command=self._mv_stop, **btn_cfg); self.btn_stop.pack(side="left", expand=True, fill="x", padx=6); add_hover(self.btn_stop, C_RED, "#fca5a5")
 
         tk.Frame(right, bg=C_CARD, height=2).pack(fill="x", padx=12, pady=15)
+        self.ui_results = {}
         for key, title, col in [("top", "UPPER", C_TOP), ("bottom", "LOWER", C_BOT)]:
             row = tk.Frame(right, bg=C_PANEL, bd=1, relief="solid"); row.pack(fill="x", padx=12, pady=4)
+            # Pack Delta FIRST on the right to guarantee its space
+            dl = tk.Label(row, text="—", font=F_DATA, fg=C_ACCENT, bg=C_PANEL, anchor="e"); dl.pack(side="right", padx=15, pady=8)
             tk.Label(row, text=title, font=F_HEAD, fg=col, bg=C_PANEL, width=8).pack(side="left", padx=12, pady=8)
-            info = tk.Frame(row, bg=C_PANEL); info.pack(side="left", expand=True)
-            init_lbl  = tk.Label(info, text="INIT: —", font=F_BODY, fg=C_TEXT_MED, bg=C_PANEL, anchor="w"); init_lbl.pack(fill="x", padx=8)
-            final_lbl = tk.Label(info, text="FINAL: —", font=F_BODY, fg=C_TEXT_MED, bg=C_PANEL, anchor="w"); final_lbl.pack(fill="x", padx=8)
-            delta_lbl = tk.Label(row, text="—",
-                                 font=F_DATA, fg=C_ACCENT, bg=C_PANEL)
-            delta_lbl.pack(side="right", padx=40, pady=8)
-            if key == "top": self.mv_init_lbl_top, self.mv_final_lbl_top, self.mv_delta_lbl_top = init_lbl, final_lbl, delta_lbl
-            else: self.mv_init_lbl_bot, self.mv_final_lbl_bot, self.mv_delta_lbl_bot = init_lbl, final_lbl, delta_lbl
+            info = tk.Frame(row, bg=C_PANEL); info.pack(side="left", fill="x", expand=True)
+            il = tk.Label(info, text="INIT: —", font=F_BODY, fg=C_TEXT_MED, bg=C_PANEL, anchor="w"); il.pack(fill="x", padx=8)
+            fl = tk.Label(info, text="FINAL: —", font=F_BODY, fg=C_TEXT_MED, bg=C_PANEL, anchor="w"); fl.pack(fill="x", padx=8)
+            self.ui_results[key] = (il, fl, dl)
         tk.Frame(right, bg=C_BG).pack(fill="both", expand=True)
 
     def _build_tab_tele(self):
@@ -313,7 +312,7 @@ class MeasurementApp:
                 if bot_m: proc(bot_m, "bottom", self.size_bot.get())
                 l_s = curr
 
-            if (curr - l_u) >= 1000:
+            if (curr - l_u) >= 200:
                 for k in ["top", "bottom"]:
                     if bufs[k]:
                         s = bufs[k]; aA = np.mean([x["A"] for x in s], axis=0); aTR = np.mean([x["TR"] for x in s], axis=0); aTL = np.mean([x["TL_ref"] for x in s], axis=0); aBR = np.mean([x["BR"] for x in s], axis=0); aB = np.mean([x["B"] for x in s], axis=0); aC = np.mean([x["C"] for x in s], axis=0); aX_alt = np.mean([x["X_alt"] for x in s], axis=0)
@@ -325,6 +324,8 @@ class MeasurementApp:
                         else: aX, dv, kv = _perp()
                         last = s[-1]; self.last_data[k].update({"A":aA, "X":aX, "TR":aTR, "BR":aBR, "B":aB, "C":aC, "dist":dv, "k":kv, "rot_2d":np.mean([x["rot"] for x in s]), "L_A":np.mean([x["L_A"] for x in s], axis=0), "R_A":np.mean([x["R_A"] for x in s], axis=0), "L_z":np.mean([x["L_z"] for x in s]), "R_z":np.mean([x["R_z"] for x in s]), "L_pitch":np.mean([x["L_p"] for x in s]), "L_yaw":np.mean([x["L_y"] for x in s]), "R_pitch":np.mean([x["R_p"] for x in s]), "R_yaw":np.mean([x["R_y"] for x in s]), "p1_px":last["p1"], "p2_px":last["p2"]})
                         self.last_data["session_count"]+=1; bufs[k].clear()
+                        # Record/Log only every 1s worth of data to avoid flooding DB?
+                        # I'll keep the logic simple: it logs every 200ms now for snappier feedback.
                         try: log.record(dv, kv, aA, aX, aTR, aBR, aB, aC, aB-aA, aTR-aTL, aC-aB, self.last_data[k]["L_A"], self.last_data[k]["R_A"])
                         except: pass
                         if self.mv_state in ("collecting_init", "ready", "collecting_final"):
