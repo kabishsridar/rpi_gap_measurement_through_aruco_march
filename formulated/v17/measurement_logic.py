@@ -5,13 +5,12 @@ import math
 import os
 from datetime import datetime
 from constants import *
-from utils import rotation_to_euler
 import log
 
 def measurement_loop(app):
     """
-    RAW Port of v16.py's background measurement loop.
-    This function is copied 1:1 from v16.py.
+    STRICT Port of v14.py's measurement logic.
+    Ensures 1:1 mathematical parity with the version the user identified as 'accurate'.
     """
     try:
         from picamera2 import Picamera2
@@ -31,33 +30,14 @@ def measurement_loop(app):
     l_s = l_u = time.time() * 1000
 
     while app.is_running:
-        # RAW Copy of v16.py logic starts here
+        # load_calib is called every loop as in v14
         K, dist_c = app.load_calib()
         try:
             frame = cv.cvtColor(pc.capture_array(), cv.COLOR_RGB2BGR)
         except Exception:
             continue
 
-        gray_full = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-        mean_b = float(np.mean(gray_full))
-        std_b  = float(np.std(gray_full))
-        
-        if mean_b < LIGHT_LOW:
-            light_status = "dark"
-        elif mean_b > LIGHT_HIGH:
-            light_status = "bright"
-        elif std_b < CONTRAST_MIN:
-            light_status = "flat"
-        else:
-            light_status = "ok"
-            
-        app.last_data["lighting"] = {
-            "status": light_status,
-            "mean":   mean_b,
-            "std":    std_b,
-        }
-
-        corners_raw, ids, _ = detector.detectMarkers(gray_full)
+        corners_raw, ids, _ = detector.detectMarkers(cv.cvtColor(frame, cv.COLOR_BGR2GRAY))
         curr = time.time() * 1000
 
         if ids is not None and len(ids) >= 1:
@@ -95,20 +75,19 @@ def measurement_loop(app):
                 top_m = m_data[:2]
                 bot_m = m_data[2:]
 
-            def proc(marker_list, pair_key, size):
+            def proc(marker_list, key, size):
                 if len(marker_list) < 2:
-                    app.last_data[pair_key]["dist"]  = 0.0
-                    app.last_data[pair_key]["p1_px"] = None
-                    app.last_data[pair_key]["L_det"] = False
-                    app.last_data[pair_key]["R_det"] = False
+                    app.last_data[key]["dist"] = 0.0
+                    app.last_data[key]["p1_px"] = None
+                    app.last_data[key]["L_det"] = False
+                    app.last_data[key]["R_det"] = False
                     return
-
                 marker_list.sort(key=lambda m: m["x"])
-                left_m  = marker_list[0]
+                left_m = marker_list[0]
                 right_m = marker_list[-1]
-                is_rf   = (app.fixed_side.get() == "Right")
+                is_rf = (app.fixed_side.get() == "Right")
                 S_m = right_m if is_rf else left_m
-                T_m = left_m  if is_rf else right_m
+                T_m = left_m if is_rf else right_m
                 h = size / 2.0
                 obj = np.array([[-h, h, 0], [h, h, 0], [h, -h, 0], [-h, -h, 0]], dtype=np.float32)
 
@@ -116,19 +95,17 @@ def measurement_loop(app):
                     _, rv, tv = cv.solvePnP(obj, c_raw, K, dist_c)
                     R, _ = cv.Rodrigues(rv)
                     pts3d = np.array([R @ pt + tv.ravel() for pt in obj])
-                    roll_r = math.degrees(math.atan2(R[1, 0], R[0, 0]))
-                    pitch, yaw, _ = rotation_to_euler(R)
-                    return pts3d, roll_r, float(tv[2, 0]), pitch, yaw
+                    return pts3d, math.degrees(math.atan2(R[1, 0], R[0, 0])), float(tv[2])
 
                 def inplane_rot(c_sorted):
-                    return abs(math.degrees(math.atan2(
+                    return math.degrees(math.atan2(
                         c_sorted[1, 1] - c_sorted[0, 1],
-                        c_sorted[1, 0] - c_sorted[0, 0])))
+                        c_sorted[1, 0] - c_sorted[0, 0]))
 
-                S_pts, S_roll, S_z, S_pitch, S_yaw = get_pose(S_m["c_raw"])
-                T_pts, T_roll, T_z, T_pitch, T_yaw = get_pose(T_m["c_raw"])
-                S_irot = inplane_rot(S_m["c"])
-                T_irot = inplane_rot(T_m["c"])
+                S_pts, S_roll, S_z = get_pose(S_m["c_raw"])
+                T_pts, T_roll, T_z = get_pose(T_m["c_raw"])
+                S_irot = abs(inplane_rot(S_m["c"]))
+                T_irot = abs(inplane_rot(T_m["c"]))
 
                 def inner_outer(pts, inner_is_right):
                     order = pts[:, 0].argsort()
@@ -139,11 +116,11 @@ def measurement_loop(app):
                     return inner[0], inner[1], outer[0]
 
                 S_inner_top, S_inner_bot, S_outer_top = inner_outer(S_pts, not is_rf)
-                A  = (S_inner_top + S_inner_bot) / 2.0
+                A = (S_inner_top + S_inner_bot) / 2.0
                 T_inner_top, T_inner_bot, _ = inner_outer(T_pts, is_rf)
-                Bv = T_inner_top
-                Cv = T_inner_bot
-                X_alt = (Bv + Cv) / 2.0
+                B = T_inner_top
+                C = T_inner_bot
+                X_alt = (B + C) / 2.0
 
                 if not is_rf:
                     p_src_2d = tuple(((S_m["c"][1]+S_m["c"][2])/2).astype(int))
@@ -152,45 +129,39 @@ def measurement_loop(app):
                     p_src_2d = tuple(((S_m["c"][0]+S_m["c"][3])/2).astype(int))
                     p_tgt_2d = tuple(((T_m["c"][1]+T_m["c"][2])/2).astype(int))
 
-                buffers[pair_key].append({
+                buffers[key].append({
                     "A": A, "X_alt": X_alt,
                     "TR": S_inner_top, "BR": S_inner_bot, "TL_ref": S_outer_top,
-                    "B": Bv, "C": Cv,
+                    "B": B, "C": C,
                     "L_A": (S_roll, S_irot), "R_A": (T_roll, T_irot),
                     "rot": max(S_irot, T_irot),
                     "L_z": S_z, "R_z": T_z,
-                    "L_pitch": S_pitch, "L_yaw": S_yaw,
-                    "R_pitch": T_pitch, "R_yaw": T_yaw,
                     "p1_px": p_src_2d, "p2_px": p_tgt_2d,
                 })
-                app.last_data[pair_key]["L_det"] = True
-                app.last_data[pair_key]["R_det"] = True
+                app.last_data[key]["L_det"] = True
+                app.last_data[key]["R_det"] = True
 
             if (curr - l_s) >= 100:
-                proc(top_m, "top",    app.size_top.get())
+                proc(top_m, "top", app.size_top.get())
                 proc(bot_m, "bottom", app.size_bot.get())
                 l_s = curr
 
-            if (curr - l_u) >= 200:
+            if (curr - l_u) >= 1000:  # v14 strict 1-second window
                 for key in ["top", "bottom"]:
                     if buffers[key]:
                         s = buffers[key]
-                        aA      = np.mean([x["A"]       for x in s], axis=0)
-                        aTR     = np.mean([x["TR"]      for x in s], axis=0)
-                        aTL     = np.mean([x["TL_ref"]  for x in s], axis=0)
-                        aBR     = np.mean([x["BR"]      for x in s], axis=0)
-                        aB      = np.mean([x["B"]       for x in s], axis=0)
-                        aC      = np.mean([x["C"]       for x in s], axis=0)
-                        aX_alt  = np.mean([x["X_alt"]   for x in s], axis=0)
-                        aL      = np.mean([x["L_A"]     for x in s], axis=0)
-                        aR      = np.mean([x["R_A"]     for x in s], axis=0)
-                        avg_rot    = float(np.mean([x["rot"]     for x in s]))
-                        avg_Lz     = float(np.mean([x["L_z"]     for x in s]))
-                        avg_Rz     = float(np.mean([x["R_z"]     for x in s]))
-                        avg_Lpitch = float(np.mean([x["L_pitch"] for x in s]))
-                        avg_Lyaw   = float(np.mean([x["L_yaw"]   for x in s]))
-                        avg_Rpitch = float(np.mean([x["R_pitch"] for x in s]))
-                        avg_Ryaw   = float(np.mean([x["R_yaw"]   for x in s]))
+                        aA      = np.mean([x["A"]      for x in s], axis=0)
+                        aTR     = np.mean([x["TR"]     for x in s], axis=0)
+                        aTL     = np.mean([x["TL_ref"] for x in s], axis=0)
+                        aBR     = np.mean([x["BR"]     for x in s], axis=0)
+                        aB      = np.mean([x["B"]      for x in s], axis=0)
+                        aC      = np.mean([x["C"]      for x in s], axis=0)
+                        aX_alt  = np.mean([x["X_alt"]  for x in s], axis=0)
+                        aL      = np.mean([x["L_A"]    for x in s], axis=0)
+                        aR      = np.mean([x["R_A"]    for x in s], axis=0)
+                        avg_rot = float(np.mean([x["rot"] for x in s]))
+                        avg_Lz  = float(np.mean([x["L_z"] for x in s]))
+                        avg_Rz  = float(np.mean([x["R_z"] for x in s]))
                         p1_px = tuple(np.mean([x["p1_px"] for x in s], axis=0).astype(int))
                         p2_px = tuple(np.mean([x["p2_px"] for x in s], axis=0).astype(int))
 
@@ -223,8 +194,6 @@ def measurement_loop(app):
                             "B": aB, "C": aC, "dist": dv, "k": kv,
                             "rot_2d": avg_rot, "L_A": aL, "R_A": aR,
                             "L_z": avg_Lz, "R_z": avg_Rz,
-                            "L_pitch": avg_Lpitch, "L_yaw": avg_Lyaw,
-                            "R_pitch": avg_Rpitch, "R_yaw": avg_Ryaw,
                             "p1_px": p1_px, "p2_px": p2_px,
                         })
                         app.last_data["session_count"] += 1
@@ -261,6 +230,5 @@ def measurement_loop(app):
                 cv.circle(frame, p2, 6, (0, 255, 0), -1)
                 cv.putText(frame, f"{key.upper()}: {d['dist']:.2f}mm", (p1[0], p1[1]-12), 0, 0.6, color, 2)
 
-        rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
-        app.current_frame      = rgb
-        app._cam_preview_frame = rgb
+        app.current_frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+        app._cam_preview_frame = app.current_frame
