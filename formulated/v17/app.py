@@ -312,7 +312,8 @@ class MeasurementApp:
             if not d["R_det"]: strip.append(f"[{k.upper()}] Right Missing")
             if d["rot_2d"] > r_th: strip.append(f"[{k.upper()}] Rotation {d['rot_2d']:.1f}°")
             lp, rp = abs(d["L_pitch"]), abs(d["R_pitch"])
-            if lp > p_th: strip.append(f"[{k.upper()}] L-Pitch high"); if rp > p_th: strip.append(f"[{k.upper()}] R-Pitch high")
+            if lp > p_th: strip.append(f"[{k.upper()}] L-Pitch high")
+            if rp > p_th: strip.append(f"[{k.upper()}] R-Pitch high")
         
         self.warn_strip.config(state="normal"); self.warn_strip.delete("1.0", tk.END)
         if strip: self.warn_strip.insert(tk.END, "![!] ALERTS:\n" + "\n".join([f" • {x}" for x in strip]))
