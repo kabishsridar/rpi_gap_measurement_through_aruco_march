@@ -47,7 +47,7 @@ F_TITLE = ("Inter", 16, "bold")      # Modern font fallback
 F_HEAD  = ("Inter", 13, "bold")
 F_BODY  = ("Inter", 12)
 F_SMALL = ("Inter", 10)
-F_DATA  = ("Inter", 36, "bold")      # Huge, legible numbers
+F_DATA  = ("Inter", 40, "bold")      # Huge, legible numbers
 F_MONO  = ("Consolas", 13)
 F_BTN   = ("Inter", 14, "bold")
 
@@ -85,7 +85,7 @@ class MeasurementApp:
 
     def __init__(self, root):
         self.root = root
-        self.root.title("Dual-Pair ArUco Measurement v15")
+        self.root.title("Dual-Pair ArUco Measurement v16")
         self.root.geometry("1600x960")
         self.root.configure(bg=C_BG)
 
@@ -191,7 +191,7 @@ class MeasurementApp:
                           font=F_HEAD,
                           fg=title_color, bg=C_PANEL,
                           bd=2, relief="flat", highlightbackground=title_color, 
-                          highlightthickness=1, padx=20, pady=20)
+                          highlightthickness=1, padx=20, pady=12)
         f.pack(**pack_kw)
         return f
 
@@ -237,13 +237,13 @@ class MeasurementApp:
         # Distance cards
         for key, title, col in [("top", "UPPER SENSOR", C_TOP),
                                  ("bottom", "LOWER SENSOR", C_BOT)]:
-            card = self._card(right, title, col, fill="x", pady=10, padx=12)
+            card = self._card(right, title, col, fill="x", pady=6, padx=12)
             dl = tk.Label(card, text="0.000 mm",
                           font=F_DATA, fg=C_GREEN, bg=C_PANEL)
-            dl.pack(pady=(12, 4))
+            dl.pack(pady=(8, 2))
             kl = tk.Label(card, text="INTERSECT RATIO: 0.0000",
                           font=F_SMALL, fg=C_TEXT_MED, bg=C_PANEL)
-            kl.pack(pady=(0, 12))
+            kl.pack(pady=(0, 8))
             if key == "top":
                 self.lbl_dist_top, self.lbl_k_top = dl, kl
             else:
@@ -256,7 +256,7 @@ class MeasurementApp:
             stf, text="READY FOR INITIAL CAPTURE",
             font=F_HEAD, fg=C_TEXT_MED, bg=C_BG,
             wraplength=380, justify="center")
-        self.mv_status_lbl.pack(pady=(5, 5))
+        self.mv_status_lbl.pack(pady=(2, 2))
 
         prog_f = tk.Frame(right, bg=C_BG)
         prog_f.pack(fill="x", padx=12)
@@ -265,17 +265,24 @@ class MeasurementApp:
         self.mv_prog_lbl.pack()
         self.mv_prog_bar = ttk.Progressbar(prog_f, length=380, maximum=COLLECT_N,
                                            mode="determinate")
-        self.mv_prog_bar.pack(pady=8)
+        self.mv_prog_bar.pack(pady=4)
 
         # Buttons
         btn_f = tk.Frame(right, bg=C_BG)
-        btn_f.pack(pady=20, fill="x", padx=12)
+        btn_f.pack(pady=10, fill="x", padx=12)
         btn_cfg = dict(font=F_BTN, relief="flat",
-                       padx=24, pady=16, bd=0, cursor="hand2")
+                       padx=20, pady=12, bd=0, cursor="hand2")
 
         def add_hover(btn, normal_bg, hover_bg):
             btn.bind("<Enter>", lambda e: btn.config(bg=hover_bg))
             btn.bind("<Leave>", lambda e: btn.config(bg=normal_bg))
+
+        self.btn_reset = tk.Button(
+            btn_f, text="↺", bg=C_CARD, fg="white",
+            activebackground=C_TEXT_MED, width=5, pady=12,
+            command=self._mv_reset, font=F_BTN, relief="flat", bd=0, cursor="hand2")
+        self.btn_reset.pack(side="right", padx=6)
+        add_hover(self.btn_reset, C_CARD, C_TEXT_MED)
 
         self.btn_start = tk.Button(
             btn_f, text="▶ START SESSION", bg=C_GREEN, fg=C_BG,
@@ -291,13 +298,6 @@ class MeasurementApp:
         self.btn_stop.pack(side="left", expand=True, fill="x", padx=6)
         add_hover(self.btn_stop, C_RED, "#fca5a5")
 
-        self.btn_reset = tk.Button(
-            btn_f, text="↺", bg=C_CARD, fg="white",
-            activebackground=C_TEXT_MED,
-            command=self._mv_reset, **btn_cfg)
-        self.btn_reset.pack(side="left", padx=6)
-        add_hover(self.btn_reset, C_CARD, C_TEXT_MED)
-
         # Delta rows
         tk.Frame(right, bg=C_CARD, height=2).pack(fill="x", padx=12, pady=15)
         
@@ -305,7 +305,7 @@ class MeasurementApp:
             row = tk.Frame(right, bg=C_PANEL, bd=1, relief="solid")
             row.pack(fill="x", padx=12, pady=8)
             tk.Label(row, text=title, font=F_HEAD,
-                     fg=col, bg=C_PANEL, width=8).pack(side="left", padx=12, pady=12)
+                     fg=col, bg=C_PANEL, width=8).pack(side="left", padx=12, pady=8)
             info = tk.Frame(row, bg=C_PANEL); info.pack(side="left", expand=True)
             init_lbl  = tk.Label(info, text="INIT: —",
                                  font=F_BODY, fg=C_TEXT_MED, bg=C_PANEL, anchor="w")
@@ -325,54 +325,8 @@ class MeasurementApp:
                 self.mv_final_lbl_bot = final_lbl
                 self.mv_delta_lbl_bot = delta_lbl
 
-        # Warnings Dashboard
-        warn_f = tk.LabelFrame(right, text="  SENSORY DIAGNOSTICS  ",
-                               font=F_HEAD,
-                               fg=C_RED, bg=C_PANEL, bd=0, padx=15, pady=15)
-        warn_f.pack(fill="x", padx=12, pady=(20, 10))
-
-        # Modern header
-        hdr = tk.Frame(warn_f, bg=C_PANEL)
-        hdr.pack(fill="x")
-        cols = ["PAIR", "L-DET", "R-DET", "ROTATION", "PITCH", "YAW"]
-        for col_i, txt in enumerate(cols):
-            w = 8 if col_i == 0 else 10
-            tk.Label(hdr, text=txt, font=F_SMALL,
-                     fg=C_TEXT_MED, bg=C_PANEL, width=w,
-                     anchor="center").grid(row=0, column=col_i, padx=2)
-
-        self.warn_dots = {}
-        for r_i, (key, title, col) in enumerate(
-                [("top", "UPPER", C_TOP), ("bottom", "LOWER", C_BOT)], start=1):
-            dots = {}
-            tk.Label(hdr, text=title, font=F_HEAD,
-                     fg=col, bg=C_PANEL, width=8, anchor="w").grid(
-                row=r_i, column=0, padx=(0, 6), pady=6)
-            for c_i, field in enumerate(["L_det", "R_det", "rot", "pitch", "yaw"], start=1):
-                dot = tk.Label(hdr, text="■", font=("Inter", 20),
-                               fg=C_CARD, bg=C_PANEL, width=8, anchor="center")
-                dot.grid(row=r_i, column=c_i, padx=2, pady=6)
-                dots[field] = dot
-            self.warn_dots[key] = dots
-
-        # Lighting "Chips"
-        light_f = tk.Frame(warn_f, bg=C_PANEL)
-        light_f.pack(fill="x", pady=(15, 0))
-        
-        def _make_chip(parent, label):
-            f = tk.Frame(parent, bg=C_CARD, padx=8, pady=4)
-            f.pack(side="left", padx=5)
-            tk.Label(f, text=label, font=F_SMALL, fg=C_TEXT_MED, bg=C_CARD).pack(side="left")
-            val = tk.Label(f, text="—", font=F_HEAD, fg=C_TEXT_BRT, bg=C_CARD)
-            val.pack(side="left", padx=(5, 0))
-            return f, val
-
-        tk.Label(light_f, text="LIGHTING:", font=F_HEAD, fg=C_TEXT_BRT, bg=C_PANEL).pack(side="left", padx=(0, 10))
-        self._light_brt_chip, self._light_brt_val = _make_chip(light_f, "BRT")
-        self._light_ctr_chip, self._light_ctr_val = _make_chip(light_f, "CTR")
-        
-        self.lbl_lighting_mv = tk.Label(light_f, text="SCANNING...", font=F_HEAD, fg=C_ACCENT, bg=C_PANEL)
-        self.lbl_lighting_mv.pack(side="right")
+        # Spacer at bottom to keep rows centered/filling space
+        tk.Frame(right, bg=C_BG).pack(fill="both", expand=True)
 
     # ══════════════════════════════════════════════════════════════════════════
     #  TAB 2: DUAL TELEMETRY  (v14 + L_PITCH, L_YAW, R_PITCH, R_YAW rows)
@@ -424,16 +378,49 @@ class MeasurementApp:
             f = tk.LabelFrame(sc, text=f" {label} ", bg=C_PANEL,
                               font=F_HEAD, fg=color, padx=25, pady=12)
             f.pack(fill="x", pady=10)
+            
             sl = tk.Scale(f, from_=lo, to=hi, resolution=res, orient="horizontal",
                           variable=var, bg=C_PANEL, fg=C_TEXT_BRT, troughcolor=C_BG,
                           highlightthickness=0, length=600, font=F_BODY)
             sl.pack(side="left", padx=20)
-            tk.Entry(f, textvariable=var, width=10, bg=C_BG, fg=C_ACCENT,
-                     insertbackground=C_TEXT_BRT, bd=0, font=F_MONO).pack(side="left")
+            
+            # Entry for manual typing (Smart Entry)
+            ent = tk.Entry(f, width=10, bg=C_BG, fg=C_ACCENT,
+                          insertbackground=C_TEXT_BRT, bd=0, font=F_MONO)
+            ent.insert(0, f"{var.get():.1f}")
+            ent.pack(side="left")
+            
+            def sync_entry_from_var(*_):
+                # Update entry ONLY if it's not currently focused
+                if self.root.focus_get() != ent:
+                    ent.delete(0, tk.END)
+                    ent.insert(0, f"{var.get():.1f}")
+                    ent.config(fg=C_ACCENT)
+            
+            # Link variable trace to update entry
+            var.trace_add("write", sync_entry_from_var)
+            
+            def commit_change(*_):
+                try:
+                    val = float(ent.get())
+                    val = max(lo, min(hi, val))
+                    var.set(val)
+                    ent.config(fg=C_ACCENT)
+                except ValueError:
+                    sync_entry_from_var()
+                self.root.focus() # Confirm by moving focus
+            
+            def on_focus_in(_):
+                ent.config(fg=C_TEXT_BRT)
+                ent.select_range(0, tk.END)
+
+            ent.bind("<FocusIn>", on_focus_in)
+            ent.bind("<Return>", commit_change)
+            ent.bind("<FocusOut>", commit_change)
             return sl
 
-        create_slider("Upper Pair Marker Size (mm)",  self.size_top, C_TOP,  10, 200)
-        create_slider("Bottom Pair Marker Size (mm)", self.size_bot, C_BOT,  10, 200)
+        create_slider("Upper Pair Marker Size (mm)",  self.size_top, C_TOP,  30, 100)
+        create_slider("Bottom Pair Marker Size (mm)", self.size_bot, C_BOT,  30, 100)
 
         self.rot_threshold_slider = create_slider(
             "Rotation Threshold °  (in-plane / formula switch)",
@@ -544,7 +531,7 @@ class MeasurementApp:
                        command=self._apply_cam).pack(anchor="w")
 
         cam_row("Exposure Time", self.cam_exposure, 100,  66000, 100, "us")
-        cam_row("ISO / Gain",    self.cam_gain,     1.0,  16.0,  0.1, "x")
+        # ISO / Gain row removed as requested
 
         awb_f = tk.LabelFrame(cam_right, text=" Color Profile / AWB ", bg=C_PANEL,
                              font=F_HEAD, fg=C_TEXT_BRT, padx=12, pady=8)
@@ -1041,13 +1028,10 @@ class MeasurementApp:
 
         for key in ["top", "bottom"]:
             d    = self.last_data[key]
-            dots = self.warn_dots[key]
 
             # Detection
             l_det = d.get("L_det", False)
             r_det = d.get("R_det", False)
-            dots["L_det"].config(fg=C_GREEN if l_det else C_RED)
-            dots["R_det"].config(fg=C_GREEN if r_det else C_RED)
             if not l_det:
                 strip_parts.append(f"[{key.upper()}] L-marker not detected")
             if not r_det:
@@ -1055,16 +1039,12 @@ class MeasurementApp:
 
             # In-plane rotation
             rot    = d.get("rot_2d", 0.0)
-            rot_ok = rot <= r_th
-            dots["rot"].config(fg=C_GREEN if rot_ok else C_AMBER)
-            if not rot_ok:
+            if rot > r_th:
                 strip_parts.append(f"[{key.upper()}] Rotation {rot:.1f}°")
 
             # Pitch (forward / backward tilt)
             lp     = d.get("L_pitch", 0.0)
             rp     = d.get("R_pitch", 0.0)
-            p_ok   = abs(lp) <= p_th and abs(rp) <= p_th
-            dots["pitch"].config(fg=C_GREEN if p_ok else C_RED)
             if abs(lp) > p_th:
                 strip_parts.append(
                     f"[{key.upper()}] L-pitch {lp:+.1f}° ({'FWD' if lp>0 else 'BWD'})")
@@ -1075,8 +1055,6 @@ class MeasurementApp:
             # Yaw (left / right tilt — "one side in")
             ly   = d.get("L_yaw", 0.0)
             ry   = d.get("R_yaw", 0.0)
-            y_ok = abs(ly) <= y_th and abs(ry) <= y_th
-            dots["yaw"].config(fg=C_GREEN if y_ok else C_RED)
             if abs(ly) > y_th:
                 strip_parts.append(
                     f"[{key.upper()}] L-yaw {ly:+.1f}° ({'RIGHT' if ly>0 else 'LEFT'})")
@@ -1090,34 +1068,15 @@ class MeasurementApp:
         mean_b = li.get("mean", 0.0)
         std_b  = li.get("std",  0.0)
 
-        # Update chips
-        self._light_brt_val.config(text=f"{mean_b:.0f}")
-        self._light_ctr_val.config(text=f"{std_b:.0f}")
-        
-        brt_ok = ls not in ["dark", "bright"]
-        self._light_brt_chip.config(bg=C_GREEN if brt_ok else C_RED)
-        self._light_ctr_chip.config(bg=C_GREEN if ls != "flat" else C_AMBER)
-        
-        if ls == "ok":
-            light_txt = "NOMINAL"
-            light_col = C_GREEN
-        elif ls == "dark":
-            light_txt = "UNDEREXPOSED"
-            light_col = C_RED
+        if ls == "dark":
             strip_parts.append(f"CRITICAL: Ambient light too low ({mean_b:.0f})")
         elif ls == "bright":
-            light_txt = "OVEREXPOSED"
-            light_col = C_AMBER
             strip_parts.append(f"WARNING: Light exposure high ({mean_b:.0f})")
         elif ls == "flat":
-            light_txt = "LOW CONTRAST"
-            light_col = C_AMBER
             strip_parts.append(f"WARNING: Image contrast degraded ({std_b:.0f})")
-        else:
-            light_txt = "INIT..."; light_col = C_ACCENT
 
-        self.lbl_lighting_mv.config(text=light_txt, fg=light_col)
-        self.lbl_lighting_cam.config(text=f"LIGHTING PROFILE: {light_txt}", fg=light_col)
+        self.lbl_lighting_cam.config(text=f"LIGHTING PROFILE: {ls.upper()}", 
+                                     fg=C_GREEN if ls=="ok" else C_AMBER)
 
         # Warning box update (Scrollable)
         self.warn_strip.config(state="normal")

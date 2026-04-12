@@ -136,8 +136,21 @@ class MeasurementApp:
         def sld(l, v, col, lo, hi):
             f = tk.LabelFrame(sc, text=f" {l} ", bg=C['p'], font=F['h'], fg=col, padx=20, pady=10); f.pack(fill="x", pady=5)
             s = tk.Scale(f, from_=lo, to=hi, resolution=0.1, orient="horizontal", variable=v, bg=C['p'], fg=C['tx'], troughcolor=C['bg'], length=600); s.pack(side="left")
-            tk.Entry(f, textvariable=v, width=8, bg=C['bg'], fg=C['a'], bd=0).pack(side="left", padx=10); return s
-        sld("Upper Size", self.size_top, C['t'], 10, 200); sld("Lower Size", self.size_bot, C['b'], 10, 200)
+            e = tk.Entry(f, width=8, bg=C['bg'], fg=C['m'], bd=0, font=F['m'])
+            e.insert(0, str(v.get())); e.pack(side="left", padx=10)
+            def _sync(*_):
+                if self.root.focus_get() != e:
+                    e.delete(0, tk.END); e.insert(0, f"{v.get():.1f}"); e.config(fg=C['m'])
+            v.trace_add("write", _sync)
+            def _cmt(*_):
+                try: v.set(float(e.get()))
+                except: _sync()
+                self.root.focus()
+            def _on_foc(_):
+                e.config(fg=C['tx']); e.delete(0, tk.END)
+            e.bind("<FocusIn>", _on_foc)
+            e.bind("<Return>", _cmt); e.bind("<FocusOut>", _cmt); return s
+        sld("Upper Size", self.size_top, C['t'], 30, 100); sld("Lower Size", self.size_bot, C['b'], 30, 100)
         self.rs = sld("Rot Thresh", self.rot_threshold, C['tx'], 0, 45)
         sld("Pitch Thresh", self.p_th, "#8e44ad", 1, 45); sld("Yaw Thresh", self.y_th, "#16a085", 1, 45)
         tf = tk.LabelFrame(sc, text=" Logic ", bg=C['p'], fg=C['tx'], font=F['h'], padx=20, pady=10); tf.pack(fill="x", pady=10)
@@ -156,10 +169,27 @@ class MeasurementApp:
         self.l_cam = tk.Label(cl, text="", font=F['h'], fg=C['m'], bg=C['bg']); self.l_cam.pack()
         def crow(l, v, lo, hi, r, u=""):
             f = tk.LabelFrame(cr, text=l, bg=C['p'], font=F['h'], fg=C['tx'], padx=10, pady=5); f.pack(fill="x", pady=2)
-            tk.Scale(f, from_=lo, to=hi, resolution=r, orient="horizontal", variable=v, bg=C['p'], fg=C['tx'], troughcolor=C['bg'], length=300, command=lambda e: self._app()).pack(side="left")
-            tk.Entry(f, textvariable=v, width=6, bg=C['bg'], fg=C['a'], bd=0).pack(side="left", padx=5)
+            e = tk.Entry(f, width=6, bg=C['bg'], fg=C['m'], bd=0, font=F['m'])
+            e.insert(0, str(v.get())); e.pack(side="right", padx=5)
+            def _up(_=None):
+                if l=="EXP": self.cam_ae.set(0)
+                self._app()
+            def _sync(*_):
+                if self.root.focus_get() != e:
+                    e.delete(0, tk.END); e.insert(0, str(v.get())); e.config(fg=C['m'])
+            v.trace_add("write", _sync)
+            def _cmt(*_):
+                try: v.set(type(v.get())(e.get())); _up()
+                except: _sync()
+                self.root.focus()
+            tk.Scale(f, from_=lo, to=hi, resolution=r, orient="horizontal", variable=v, bg=C['p'], fg=C['tx'], troughcolor=C['bg'], length=300, command=_up).pack(side="left")
+            def _on_foc(_):
+                e.config(fg=C['tx']); e.delete(0, tk.END)
+            e.bind("<FocusIn>", _on_foc)
+            e.bind("<Return>", _cmt); e.bind("<FocusOut>", _cmt)
         tk.Checkbutton(cr, text="AE", variable=self.cam_ae, bg=C['p'], fg=C['tx'], selectcolor=C['bg'], command=self._app).pack(fill="x")
-        crow("EXP", self.cam_exp, 100, 66000, 100, "us"); crow("GAIN", self.cam_gain, 1, 16, 0.1, "x")
+        crow("EXP", self.cam_exp, 100, 66000, 100, "us")
+        # GAIN row removed as requested
         tk.Checkbutton(cr, text="AWB", variable=self.cam_awb, bg=C['p'], fg=C['tx'], selectcolor=C['bg'], command=self._app).pack(fill="x")
         wf = tk.Frame(cr, bg=C['p']); wf.pack(fill="x")
         for m in AWB_MODES: tk.Radiobutton(wf, text=m, variable=self.cam_awbm, value=m, bg=C['p'], fg=C['tx'], selectcolor=C['bg'], font=F['s'], command=self._app).pack(side="left")
