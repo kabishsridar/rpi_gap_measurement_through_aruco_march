@@ -24,6 +24,7 @@ class SmartEntry(tk.Entry):
             self.variable.set(float(self.get()))
             self.selection_clear()
             self.winfo_toplevel().focus_set()
+            self.update_idletasks() # Force GUI to sync sliders
         except:
             self.delete(0, tk.END)
             self.insert(0, str(self.variable.get()))
@@ -223,7 +224,25 @@ class MeasurementApp:
 
     def _mv_start(self): self.mv_state = "collecting_init"; self.mv_init_buf = {"top": [], "bottom": []}; self.btn_start.config(state="disabled"); self.btn_stop.config(state="disabled")
     def _mv_stop(self): self.mv_state = "collecting_final"; self.mv_final_buf = {"top": [], "bottom": []}; self.btn_stop.config(state="disabled")
-    def _mv_reset(self): self.mv_state = "idle"; self.btn_start.config(state="normal"); self.btn_stop.config(state="disabled")
+    def _mv_reset(self):
+        self.mv_state = "idle"
+        self.mv_init_buf = {"top": [], "bottom": []}
+        self.mv_final_buf = {"top": [], "bottom": []}
+        self.mv_dist_init = {"top": None, "bottom": None}
+        self.mv_dist_final = {"top": None, "bottom": None}
+        
+        # Reset GUI Labels
+        for lbl_init, lbl_final, lbl_delta in [
+            (self.mv_init_lbl_top, self.mv_final_lbl_top, self.mv_delta_lbl_top),
+            (self.mv_init_lbl_bot, self.mv_final_lbl_bot, self.mv_delta_lbl_bot)
+        ]:
+            lbl_init.config(text="INIT: —")
+            lbl_final.config(text="FINAL: —")
+            lbl_delta.config(text="—")
+        
+        self.mv_prog_bar["value"] = 0
+        self.btn_start.config(state="normal")
+        self.btn_stop.config(state="disabled")
 
     def _mv_tick(self):
         sc = self.last_data["session_count"]

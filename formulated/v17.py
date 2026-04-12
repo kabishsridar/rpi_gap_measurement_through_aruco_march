@@ -143,7 +143,9 @@ class MeasurementApp:
                     e.delete(0, tk.END); e.insert(0, f"{v.get():.1f}"); e.config(fg=C['m'])
             v.trace_add("write", _sync)
             def _cmt(*_):
-                try: v.set(float(e.get()))
+                try: 
+                    v.set(float(e.get()))
+                    self.root.update_idletasks() # Force sync
                 except: _sync()
                 self.root.focus()
             e.bind("<FocusIn>", lambda _: (e.config(fg=C['tx']), e.delete(0, tk.END)))
@@ -204,7 +206,25 @@ class MeasurementApp:
 
     def _mv_st(self): self.mv_state="collecting_init"; self.bufs["init"]={"top":[],"bottom":[]}; self.b_st.config(state="disabled"); self.b_sp.config(state="disabled")
     def _mv_sp(self): self.mv_state="collecting_final"; self.bufs["final"]={"top":[],"bottom":[]}; self.b_sp.config(state="disabled")
-    def _mv_rs(self): self.mv_state="idle"; self.b_st.config(state="normal"); self.b_sp.config(state="disabled"); self.p_bar["value"]=0; self.wst.config(state="normal"); self.wst.delete("1.0",tk.END); self.wst.config(state="disabled")
+    def _mv_rs(self):
+        self.mv_state = "idle"
+        self.mv_init_buf = {"top":[], "bottom":[]}
+        self.mv_final_buf = {"top":[], "bottom":[]}
+        self.mv_d = {"init":{"top":None,"bottom":None}, "final":{"top":None,"bottom":None}}
+        
+        # Reset Labels
+        for k in ["top", "bottom"]:
+            il, fl, dl = self.m_res[k]
+            il.config(text="INIT: —")
+            fl.config(text="FINAL: —")
+            dl.config(text="—")
+            
+        self.b_st.config(state="normal")
+        self.b_sp.config(state="disabled")
+        self.p_bar["value"] = 0
+        self.wst.config(state="normal")
+        self.wst.delete("1.0", tk.END)
+        self.wst.config(state="disabled")
     def _app(self):
         if not self.pc: return
         try:
