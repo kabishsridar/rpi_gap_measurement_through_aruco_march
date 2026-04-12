@@ -41,10 +41,11 @@ F_BTN   = ("Inter", 14, "bold")
 class MeasurementApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Dual-Pair ArUco Measurement v16 (v14 Formula)")
+        self.root.title("Dual-Pair ArUco Measurement v16")
         self.root.geometry("1600x960")
         self.root.configure(bg=C_BG)
 
+        # ── Vars ──
         self.size_top         = tk.DoubleVar(value=DEFAULT_MARKER_SIZE)
         self.size_bot         = tk.DoubleVar(value=DEFAULT_MARKER_SIZE)
         self.fixed_side       = tk.StringVar(value="Left")
@@ -53,13 +54,8 @@ class MeasurementApp:
 
         self.cam_ae         = tk.BooleanVar(value=True)
         self.cam_exposure   = tk.IntVar(value=10000)
-        self.cam_gain       = tk.DoubleVar(value=2.0)
-        self.cam_awb        = tk.BooleanVar(value=True)
-        self.cam_awb_mode   = tk.StringVar(value="Auto")
         self.cam_brightness = tk.DoubleVar(value=0.0)
         self.cam_contrast   = tk.DoubleVar(value=1.0)
-        self.cam_saturation = tk.DoubleVar(value=1.0)
-        self.cam_sharpness  = tk.DoubleVar(value=1.0)
         self.pc             = None
         self._cam_preview_frame = None
 
@@ -110,38 +106,48 @@ class MeasurementApp:
         self._build_tab_cam()
 
     def _card(self, parent, title, title_color, **pack_kw):
-        f = tk.LabelFrame(parent, text=f"  {title.upper()}  ", font=F_HEAD, fg=title_color, bg=C_PANEL, bd=1, relief="solid", padx=20, pady=12)
+        f = tk.LabelFrame(parent, text=f"  {title.upper()}  ", font=F_HEAD, fg=title_color, bg=C_PANEL, bd=2, relief="flat", highlightbackground=title_color, highlightthickness=1, padx=20, pady=12)
         f.pack(**pack_kw)
         return f
 
     def _build_tab_live(self):
         tab = ttk.Frame(self.tabs); self.tabs.add(tab, text=" 📏  Movement "); tab.configure(style="TFrame")
+        
         left = tk.Frame(tab, bg=C_BG); left.pack(side="left", padx=16, pady=16)
-        self.canvas = tk.Canvas(left, width=960, height=540, bg="black", highlightthickness=1)
+        self.canvas = tk.Canvas(left, width=960, height=540, bg="black", highlightthickness=1, highlightbackground=C_PANEL)
         self.canvas.pack()
         
+        warn_f = tk.Frame(left, bg=C_PANEL, bd=1, relief="solid"); warn_f.pack(fill="x", pady=(12, 0))
+        self.warn_strip = tk.Text(warn_f, height=5, font=F_HEAD, fg=C_ACCENT, bg=C_PANEL, padx=15, pady=12, bd=0, highlightthickness=0, wrap="word", state="disabled")
+        self.warn_strip.pack(side="left", fill="both", expand=True)
+        ws = tk.Scrollbar(warn_f, orient="vertical", command=self.warn_strip.yview, width=12); ws.pack(side="right", fill="y"); self.warn_strip.config(yscrollcommand=ws.set)
+
         right = tk.Frame(tab, bg=C_BG); right.pack(side="right", fill="both", expand=True, padx=12, pady=10)
         for key, title, col in [("top", "UPPER SENSOR", C_TOP), ("bottom", "LOWER SENSOR", C_BOT)]:
             card = self._card(right, title, col, fill="x", pady=6, padx=12)
-            dl = tk.Label(card, text="0.000 mm", font=F_DATA, fg=C_GREEN, bg=C_PANEL); dl.pack(pady=(4, 0))
-            kl = tk.Label(card, text="k: 0.0000", font=F_SMALL, fg=C_TEXT_MED, bg=C_PANEL); kl.pack(pady=(0, 4))
+            dl = tk.Label(card, text="0.000 mm", font=F_DATA, fg=C_GREEN, bg=C_PANEL); dl.pack(pady=(8, 2))
+            kl = tk.Label(card, text="INTERSECT RATIO: 0.0000", font=F_SMALL, fg=C_TEXT_MED, bg=C_PANEL); kl.pack(pady=(0, 8))
             if key == "top": self.lbl_dist_top, self.lbl_k_top = dl, kl
             else: self.lbl_dist_bot, self.lbl_k_bot = dl, kl
 
-        self.mv_status_lbl = tk.Label(right, text="Press START to capture initial gap", font=F_HEAD, fg=C_TEXT_MED, bg=C_BG); self.mv_status_lbl.pack(pady=10)
-        self.mv_prog_bar = ttk.Progressbar(right, length=380, maximum=COLLECT_N, mode="determinate"); self.mv_prog_bar.pack(pady=5)
+        sf = tk.Frame(right, bg=C_BG); sf.pack(fill="x", pady=(15, 0))
+        self.mv_status_lbl = tk.Label(sf, text="READY FOR INITIAL CAPTURE", font=F_HEAD, fg=C_TEXT_MED, bg=C_BG); self.mv_status_lbl.pack(pady=2)
         
+        pf = tk.Frame(right, bg=C_BG); pf.pack(fill="x", padx=12)
+        self.mv_prog_bar = ttk.Progressbar(pf, length=380, maximum=COLLECT_N, mode="determinate"); self.mv_prog_bar.pack(pady=4)
+
         bf = tk.Frame(right, bg=C_BG); bf.pack(pady=10, fill="x", padx=12)
-        self.btn_reset = tk.Button(bf, text="↺", bg=C_CARD, fg="white", font=F_BTN, width=5, command=self._mv_reset); self.btn_reset.pack(side="right", padx=6)
-        self.btn_start = tk.Button(bf, text="▶ START", bg=C_GREEN, fg=C_BG, font=F_BTN, command=self._mv_start); self.btn_start.pack(side="left", expand=True, fill="x", padx=6)
-        self.btn_stop = tk.Button(bf, text="■ STOP", bg=C_RED, fg=C_BG, font=F_BTN, state="disabled", command=self._mv_stop); self.btn_stop.pack(side="left", expand=True, fill="x", padx=6)
+        self.btn_reset = tk.Button(bf, text="↺", bg=C_CARD, fg="white", font=F_BTN, width=5, pady=10, command=self._mv_reset); self.btn_reset.pack(side="right", padx=6)
+        self.btn_start = tk.Button(bf, text="▶ START SESSION", bg=C_GREEN, fg=C_BG, font=F_BTN, padx=20, pady=10, command=self._mv_start); self.btn_start.pack(side="left", expand=True, fill="x", padx=6)
+        self.btn_stop = tk.Button(bf, text="■ STOP (SAVE)", bg=C_RED, fg=C_BG, font=F_BTN, state="disabled", padx=20, pady=10, command=self._mv_stop); self.btn_stop.pack(side="left", expand=True, fill="x", padx=6)
 
         for key, title, col in [("top", "UPPER", C_TOP), ("bottom", "LOWER", C_BOT)]:
             row = tk.Frame(right, bg=C_PANEL, bd=1, relief="solid"); row.pack(fill="x", padx=12, pady=4)
-            dl = tk.Label(row, text="—", font=F_DATA, fg=C_ACCENT, bg=C_PANEL); dl.pack(side="right", padx=15)
+            dl = tk.Label(row, text="—", font=F_DATA, fg=C_ACCENT, bg=C_PANEL); dl.pack(side="right", padx=15, pady=8)
+            tk.Label(row, text=title, font=F_HEAD, fg=col, bg=C_PANEL, width=8).pack(side="left", padx=12)
             info = tk.Frame(row, bg=C_PANEL); info.pack(side="left", expand=True)
-            il = tk.Label(info, text="Init: —", font=F_BODY, fg=C_TEXT_MED, bg=C_PANEL); il.pack(fill="x")
-            fl = tk.Label(info, text="Final: —", font=F_BODY, fg=C_TEXT_MED, bg=C_PANEL); fl.pack(fill="x")
+            il = tk.Label(info, text="INIT: —", font=F_BODY, fg=C_TEXT_MED, bg=C_PANEL, anchor="w"); il.pack(fill="x")
+            fl = tk.Label(info, text="FINAL: —", font=F_BODY, fg=C_TEXT_MED, bg=C_PANEL, anchor="w"); fl.pack(fill="x")
             if key == "top": self.mv_init_lbl_top, self.mv_final_lbl_top, self.mv_delta_lbl_top = il, fl, dl
             else: self.mv_init_lbl_bot, self.mv_final_lbl_bot, self.mv_delta_lbl_bot = il, fl, dl
 
@@ -151,91 +157,68 @@ class MeasurementApp:
         self.tele_vars = {"top": {}, "bottom": {}}
         v_show = ["A", "X", "TR", "BR", "B", "C", "L_ROL", "L_ROT", "L_Z", "R_ROL", "R_ROT", "R_Z"]
         for key, title, col in [("top", "TOP", C_TOP), ("bottom", "BOT", C_BOT)]:
-            cf = tk.LabelFrame(mtf, text=f" {title} DATA ", font=F_HEAD, fg=col, bg=C_BG); cf.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+            cf = tk.LabelFrame(mtf, text=f" {title} DATA ", font=F_HEAD, fg=col, bg=C_BG); cf.pack(side="left", fill="both", expand=True, padx=20, pady=20)
             for v_name in v_show:
-                row = tk.Frame(cf, bg=C_PANEL); row.pack(fill="x", pady=2)
-                tk.Label(row, text=v_name, font=F_SMALL, bg=C_PANEL, fg=C_TEXT_MED).pack(side="left", padx=5)
-                sv = tk.StringVar(value="—"); tk.Label(row, textvariable=sv, font=F_MONO, bg=C_PANEL, fg=C_TEXT_BRT).pack(side="right", padx=5)
+                row = tk.Frame(cf, bg=C_PANEL); row.pack(fill="x", pady=4, padx=10)
+                tk.Label(row, text=v_name, font=F_SMALL, bg=C_PANEL, fg=C_TEXT_MED).pack(side="left", padx=10)
+                sv = tk.StringVar(value="—"); tk.Label(row, textvariable=sv, font=F_MONO, bg=C_PANEL, fg=C_TEXT_BRT).pack(side="right", padx=10)
                 self.tele_vars[key][v_name] = sv
 
     def _build_tab_settings(self):
         tab = ttk.Frame(self.tabs); self.tabs.add(tab, text=" ⚙  Settings ")
-        sc = tk.Frame(tab, bg=C_BG); sc.pack(fill="both", expand=True, padx=40, pady=20)
-        rf = tk.LabelFrame(sc, text=" Reference (Fixed Side) ", bg=C_PANEL, fg=C_TEXT_BRT); rf.pack(fill="x", pady=10)
-        for choice in ["Left", "Right"]: tk.Radiobutton(rf, text=choice, variable=self.fixed_side, value=choice, bg=C_PANEL, fg=C_TEXT_BRT).pack(side="left", padx=20)
+        sc = tk.Frame(tab, bg=C_BG); sc.pack(fill="both", expand=True, padx=80, pady=40)
+        rf = tk.LabelFrame(sc, text=" Reference (Fixed Side) ", bg=C_PANEL, fg=C_TEXT_BRT, font=F_HEAD); rf.pack(fill="x", pady=10)
+        for choice in ["Left", "Right"]: tk.Radiobutton(rf, text=choice, variable=self.fixed_side, value=choice, bg=C_PANEL, fg=C_TEXT_BRT).pack(side="left", padx=30)
         def sld(l, v, c, lo, hi):
-            f = tk.LabelFrame(sc, text=f" {l} ", bg=C_PANEL, fg=c); f.pack(fill="x", pady=5)
-            tk.Scale(f, from_=lo, to=hi, resolution=0.1, orient="horizontal", variable=v, bg=C_PANEL, length=600).pack(side="left", padx=10)
-            tk.Entry(f, textvariable=v, width=10).pack(side="left")
+            f = tk.LabelFrame(sc, text=f" {l} ", bg=C_PANEL, fg=c, font=F_HEAD); f.pack(fill="x", pady=10)
+            tk.Scale(f, from_=lo, to=hi, resolution=0.1, orient="horizontal", variable=v, bg=C_PANEL, length=600).pack(side="left", padx=20)
+            tk.Entry(f, textvariable=v, width=10, font=F_MONO).pack(side="left")
         sld("Upper Marker (mm)", self.size_top, C_TOP, 10, 200); sld("Lower Marker (mm)", self.size_bot, C_BOT, 10, 200); sld("Rot Thresh °", self.rot_threshold, C_TEXT_BRT, 0, 45)
-        tk.Checkbutton(sc, text="Use Angle Threshold", variable=self.use_angle_thresh, bg=C_BG, fg=C_TEXT_BRT, selectcolor=C_BG).pack(pady=10)
+        tk.Checkbutton(sc, text="Use Angle Threshold", variable=self.use_angle_thresh, bg=C_BG, fg=C_TEXT_BRT, font=F_BODY).pack(pady=20)
 
     def _build_tab_cam(self):
         tab = ttk.Frame(self.tabs); self.tabs.add(tab, text=" 📷  Camera ")
         cl = tk.Frame(tab, bg=C_BG); cl.pack(side="left", fill="both", expand=True)
-        cr = tk.Frame(tab, bg=C_BG); cr.pack(side="right", fill="y", padx=10)
-        self.cam_canvas = tk.Canvas(cl, width=800, height=480, bg="black"); self.cam_canvas.pack(pady=20)
-        self.lbl_cam_status = tk.Label(cl, text="⏳ Wait...", font=F_HEAD, fg=C_AMBER, bg=C_BG); self.lbl_cam_status.pack()
+        cr = tk.Frame(tab, bg=C_BG); cr.pack(side="right", fill="y", padx=20)
+        self.cam_canvas = tk.Canvas(cl, width=800, height=480, bg="black", highlightthickness=2, highlightbackground=C_PANEL); self.cam_canvas.pack(pady=30)
+        self.lbl_cam_status = tk.Label(cl, text="⏳ Wait...", font=F_TITLE, fg=C_AMBER, bg=C_BG); self.lbl_cam_status.pack()
         def crw(l, v, lo, hi, r):
-            f = tk.LabelFrame(cr, text=f" {l} ", bg=C_PANEL, fg=C_TEXT_BRT); f.pack(fill="x", pady=2)
-            tk.Scale(f, from_=lo, to=hi, resolution=r, orient="horizontal", variable=v, bg=C_PANEL, command=lambda _: self._apply_cam()).pack(fill="x")
-        tk.Checkbutton(cr, text="Auto Exposure", variable=self.cam_ae, bg=C_BG, fg=C_TEXT_BRT, command=self._apply_cam).pack(fill="x")
-        crw("Exposure (us)", self.cam_exposure, 100, 66000, 100); crw("Brightness", self.cam_brightness, -1.0, 1.0, 0.05); crw("Contrast", self.cam_contrast, 0.0, 8.0, 0.1)
-        tk.Button(cr, text="Reset Camera", bg=C_RED, command=self._reset_cam).pack(pady=10, fill="x")
-
-    def _mv_start(self):
-        self.mv_state = "collecting_init"; self.mv_init_buf = {"top": [], "bottom": []}; self.btn_start.config(state="disabled"); self.mv_status_lbl.config(text="Collecting Initial...", fg=C_AMBER)
-    def _mv_stop(self):
-        self.mv_state = "collecting_final"; self.mv_final_buf = {"top": [], "bottom": []}; self.btn_stop.config(state="disabled"); self.mv_status_lbl.config(text="Collecting Final...", fg=C_AMBER)
-    def _mv_reset(self):
-        self.mv_state = "idle"; self.btn_start.config(state="normal"); self.btn_stop.config(state="disabled"); self.mv_status_lbl.config(text="Press START", fg=C_TEXT_MED)
-
-    def _mv_tick(self):
-        sc = self.last_data["session_count"]
-        if sc == self._last_sc: return
-        self._last_sc = sc
-        if self.mv_state == "collecting_init":
-            for k in ["top", "bottom"]:
-                d = self.last_data[k]["dist"]
-                if d > 0: self.mv_init_buf[k].append(d)
-            n = min(len(self.mv_init_buf["top"]), len(self.mv_init_buf["bottom"]))
-            if n >= COLLECT_N:
-                self.mv_dist_init = {k: float(np.mean(self.mv_init_buf[k][:COLLECT_N])) for k in ["top", "bottom"]}
-                self.mv_state = "ready"; self.btn_stop.config(state="normal"); self.mv_status_lbl.config(text="Initial Captured", fg=C_GREEN)
-        elif self.mv_state == "collecting_final":
-            for k in ["top", "bottom"]:
-                d = self.last_data[k]["dist"]
-                if d > 0: self.mv_final_buf[k].append(d)
-            n = min(len(self.mv_final_buf["top"]), len(self.mv_final_buf["bottom"]))
-            if n >= COLLECT_N:
-                self.mv_dist_final = {k: float(np.mean(self.mv_final_buf[k][:COLLECT_N])) for k in ["top", "bottom"]}
-                self.mv_state = "done"; self.btn_start.config(state="normal"); self.mv_status_lbl.config(text="Final Captured", fg=C_GREEN)
-                for k, il, fl, dl in [("top", self.mv_init_lbl_top, self.mv_final_lbl_top, self.mv_delta_lbl_top), ("bottom", self.mv_init_lbl_bot, self.mv_final_lbl_bot, self.mv_delta_lbl_bot)]:
-                    di, df = self.mv_dist_init[k], self.mv_dist_final[k]; delta = df - di
-                    il.config(text=f"Init: {di:.3f}"); fl.config(text=f"Final: {df:.3f}"); dl.config(text=f"{delta:+.3f}")
+            f = tk.LabelFrame(cr, text=f" {l} ", bg=C_PANEL, fg=C_TEXT_BRT, font=F_HEAD); f.pack(fill="x", pady=5)
+            tk.Scale(f, from_=lo, to=hi, resolution=r, orient="horizontal", variable=v, bg=C_PANEL, command=lambda _: self._apply_cam()).pack(fill="x", padx=10)
+        tk.Checkbutton(cr, text="Auto Exposure", variable=self.cam_ae, bg=C_BG, fg=C_TEXT_BRT, font=F_BODY, command=self._apply_cam).pack(fill="x", pady=5)
+        crw("Exposure", self.cam_exposure, 100, 66000, 100); crw("Brightness", self.cam_brightness, -1.0, 1.0, 0.05); crw("Contrast", self.cam_contrast, 0.0, 8.0, 0.1)
+        tk.Button(cr, text="Reset Camera", bg=C_RED, fg="white", font=F_BTN, command=self._reset_cam).pack(pady=20, fill="x")
 
     def load_calib(self):
         f = "camera_params_2.npz" if self.fixed_side.get() == "Right" else "camera_params.npz"
         if os.path.exists(f):
             d = np.load(f)
-            # v14 Keys Compatibility
+            # v14 compatibility check (camera_matrix vs mtx)
             k_m = 'camera_matrix' if 'camera_matrix' in d else 'mtx'
             k_d = 'dist_coeff' if 'dist_coeff' in d else 'dist'
             return d[k_m], d[k_d]
         return np.array([[1280,0,640],[0,1280,360],[0,0,1]], dtype=np.float32), np.zeros(5)
 
+    def _mv_start(self):
+        self.mv_state = "collecting_init"; self.mv_init_buf = {"top": [], "bottom": []}; self.btn_start.config(state="disabled"); self.mv_status_lbl.config(text="COLLECTING INITIALS...", fg=C_AMBER)
+    def _mv_stop(self):
+        self.mv_state = "collecting_final"; self.mv_final_buf = {"top": [], "bottom": []}; self.btn_stop.config(state="disabled"); self.mv_status_lbl.config(text="COLLECTING FINALS...", fg=C_AMBER)
+    def _mv_reset(self):
+        self.mv_state = "idle"; self.btn_start.config(state="normal"); self.btn_stop.config(state="disabled"); self.mv_status_lbl.config(text="READY FOR INITIAL CAPTURE", fg=C_TEXT_MED)
+
     def measurement_loop(self):
+        # ─── v14 Formula Implementation ───
         try:
             from picamera2 import Picamera2
             pc = Picamera2(); pc.configure(pc.create_video_configuration(main={"size": RESOLUTION, "format": "RGB888"})); pc.start(); self.pc = pc
         except: return
         detector = cv.aruco.ArucoDetector(cv.aruco.getPredefinedDictionary(ARUCO_DICT), cv.aruco.DetectorParameters())
-        log.init_log(); buffers = {"top": [], "bottom": []}; l_s = l_u = time.time() * 1000
+        log.init_log(); b = {"top": [], "bottom": []}; l_s = l_u = time.time()*1000
         while self.is_running:
             K, dist_c = self.load_calib()
             try: frame = cv.cvtColor(pc.capture_array(), cv.COLOR_RGB2BGR)
             except: continue
-            corners_raw, ids, _ = detector.detectMarkers(cv.cvtColor(frame, cv.COLOR_BGR2GRAY)); curr = time.time() * 1000
+            corners_raw, ids, _ = detector.detectMarkers(cv.cvtColor(frame, cv.COLOR_BGR2GRAY)); curr = time.time()*1000
             if ids is not None and len(ids) >= 1:
                 m_data = []
                 for i in range(len(ids)):
@@ -268,27 +251,27 @@ class MeasurementApp:
                     p2 = tuple(((T_m["c"][0]+T_m["c"][3])/2 if not is_rf else (T_m["c"][1]+T_m["c"][2])/2).astype(int))
                     si = abs(math.degrees(math.atan2(S_m["c"][1,1]-S_m["c"][0,1], S_m["c"][1,0]-S_m["c"][0,0])))
                     ti = abs(math.degrees(math.atan2(T_m["c"][1,1]-T_m["c"][0,1], T_m["c"][1,0]-T_m["c"][0,0])))
-                    buffers[key].append({"A": A, "X_alt": (T_it+T_ib)/2.0, "TR": S_it, "TL_ref": S_ot, "BR": S_ib, "B": T_it, "C": T_ib, "L_A": (S_roll, si), "R_A": (T_roll, ti), "rot": max(si, ti), "L_z": S_z, "R_z": T_z, "p1": p1, "p2": p2})
+                    b[key].append({"A": A, "XA": (T_it+T_ib)/2.0, "TR": S_it, "TL": S_ot, "BR": S_ib, "B": T_it, "C": T_ib, "LA": (S_roll, si), "RA": (T_roll, ti), "rt": max(si, ti), "Lz": S_z, "Rz": T_z, "p1": p1, "p2": p2})
                     self.last_data[key].update({"L_det": True, "R_det": True})
                 if curr-l_s >= 100: proc(top_m, "top", self.size_top.get()); proc(bot_m, "bottom", self.size_bot.get()); l_s = curr
-                if curr-l_u >= 1000: # v14 STRICT
+                if curr-l_u >= 1000: # v14 1s Averaging
                     for k in ["top", "bottom"]:
-                        if buffers[k]:
-                            s = buffers[k]; aA = np.mean([x["A"] for x in s],0); aTR = np.mean([x["TR"] for x in s],0); aTL = np.mean([x["TL_ref"] for x in s],0)
-                            aB = np.mean([x["B"] for x in s],0); aC = np.mean([x["C"] for x in s],0); aX_alt = np.mean([x["X_alt"] for x in s],0)
-                            v_r = aTR-aTL; v = v_r/np.linalg.norm(v_r) if np.linalg.norm(v_r)>0 else np.zeros(3); w = aC-aB; u = aB-aA; den = np.dot(v,v)*np.dot(w,w)-np.dot(v,w)**2
-                            def _prp():
-                                if abs(den)>1e-6: kv = np.clip((np.dot(v,w)*np.dot(u,v)-np.dot(v,v)*np.dot(u,w))/den, 0, 1); ax = aB+kv*w; return ax, np.linalg.norm(ax-aA), kv
-                                return aX_alt, np.linalg.norm(aX_alt-aA), 0.5
-                            if self.use_angle_thresh.get() and np.mean([x["rot"] for x in s]) > self.rot_threshold.get(): aX, dv, kv = aX_alt, np.linalg.norm(aX_alt-aA), 0.5
-                            else: aX, dv, kv = _prp()
-                            self.last_data[k].update({"A": aA, "X": aX, "dist": dv, "k": kv, "rot_2d": np.mean([x["rot"] for x in s]), "L_z": np.mean([x["L_z"] for x in s]), "R_z": np.mean([x["R_z"] for x in s]), "L_A": np.mean([x["L_A"] for x in s],0), "R_A": np.mean([x["R_A"] for x in s],0), "TR": aTR, "BR": np.mean([x["BR"] for x in s],0), "B": aB, "C": aC, "p1_px": tuple(np.mean([x["p1"] for x in s],0).astype(int)), "p2_px": tuple(np.mean([x["p2"] for x in s],0).astype(int))})
-                            try: log.record(dv, kv, aA, aX, aTR, np.mean([x["BR"] for x in s],0), aB, aC, aA, aTR-aTL, aC-aB, np.mean([x["L_A"] for x in s],0), np.mean([x["R_A"] for x in s],0))
+                        if b[k]:
+                            s = b[k]; aA = np.mean([x["A"] for x in s],0); aTR = np.mean([x["TR"] for x in s],0); aTL = np.mean([x["TL"] for x in s],0)
+                            aB = np.mean([x["B"] for x in s],0); aC = np.mean([x["C"] for x in s],0); aXA = np.mean([x["XA"] for x in s],0)
+                            vr = aTR-aTL; v = vr/np.linalg.norm(vr) if np.linalg.norm(vr)>0 else np.zeros(3); w=aC-aB; u=aB-aA; den=np.dot(v,v)*np.dot(w,w)-np.dot(v,w)**2
+                            def _perp():
+                                if abs(den)>1e-6: kv = np.clip((np.dot(v,w)*np.dot(u,v)-np.dot(v,v)*np.dot(u,w))/den, 0, 1); return aB+kv*w, np.linalg.norm((aB+kv*w)-aA), kv
+                                return aXA, np.linalg.norm(aXA-aA), 0.5
+                            if self.use_angle_thresh.get() and np.mean([x["rt"] for x in s]) > self.rot_threshold.get(): aX, dv, kv = aXA, np.linalg.norm(aXA-aA), 0.5
+                            else: aX, dv, kv = _perp()
+                            self.last_data[k].update({"A":aA, "X":aX, "dist":dv, "k":kv, "rot_2d":np.mean([x["rt"] for x in s]), "L_z":np.mean([x["Lz"] for x in s]), "R_z":np.mean([x["Rz"] for x in s]), "L_A":np.mean([x["LA"] for x in s],0), "R_A":np.mean([x["RA"] for x in s],0), "TR":aTR, "BR":np.mean([x["BR"] for x in s],0), "B":aB, "C":aC, "p1_px":tuple(np.mean([x["p1"] for x in s],0).astype(int)), "p2_px":tuple(np.mean([x["p2"] for x in s],0).astype(int))})
+                            try: log.record(dv, kv, aA, aX, aTR, np.mean([x["BR"] for x in s],0), aB, aC, aA, aTR-aTL, aC-aB, np.mean([x["LA"] for x in s],0), np.mean([x["RA"] for x in s],0))
                             except: pass
-                            buffers[k].clear()
-                    self.last_data["session_count"] += 1; l_u = curr
+                            b[k].clear()
+                    self.last_data["session_count"]+=1; l_u=curr
             else:
-                for k in ["top", "bottom"]: self.last_data[k]["dist"] = 0.0
+                for k in ["top", "bottom"]: self.last_data[k]["dist"]=0.0
             for k, col in [("top", (0,165,255)), ("bottom", (255,0,255))]:
                 d = self.last_data[k]
                 if d["dist"]>0 and d["p1_px"]:
@@ -306,8 +289,32 @@ class MeasurementApp:
     def update_gui_loop(self):
         if self.current_frame is not None:
             img = ImageTk.PhotoImage(image=Image.fromarray(self.current_frame).resize((960, 540))); self.canvas.create_image(0, 0, anchor="nw", image=img); self.canvas.img = img
-        self.lbl_dist_top.config(text=f"{self.last_data['top']['dist']:.3f} mm"); self.lbl_k_top.config(text=f"k: {self.last_data['top']['k']:.4f}")
-        self.lbl_dist_bot.config(text=f"{self.last_data['bottom']['dist']:.3f} mm"); self.lbl_k_bot.config(text=f"k: {self.last_data['bottom']['k']:.4f}")
+        self.lbl_dist_top.config(text=f"{self.last_data['top']['dist']:.3f} mm"); self.lbl_k_top.config(text=f"INTERSECT RATIO: {self.last_data['top']['k']:.4f}")
+        self.lbl_dist_bot.config(text=f"{self.last_data['bottom']['dist']:.3f} mm"); self.lbl_k_bot.config(text=f"INTERSECT RATIO: {self.last_data['bottom']['k']:.4f}")
+        
+        # UI Alerts Logic
+        strip = []; r_th = self.rot_threshold.get()
+        for k in ["top", "bottom"]:
+            d = self.last_data[k]
+            if not d["L_det"]: strip.append(f"[{k.upper()}] Left Missing")
+            if not d["R_det"]: strip.append(f"[{k.upper()}] Right Missing")
+            if d["rot_2d"] > r_th: strip.append(f"[{k.upper()}] Rotation {d['rot_2d']:.1f}°")
+        self.warn_strip.config(state="normal"); self.warn_strip.delete("1.0", tk.END)
+        if strip: self.warn_strip.insert(tk.END, "![!] ACTIVE ALERTS:\n" + "\n".join([f" • {x}" for x in strip]))
+        else: self.warn_strip.insert(tk.END, "[OK] SYSTEM NOMINAL")
+        self.warn_strip.config(state="disabled")
+
+        if self._cam_preview_frame is not None:
+            cimg = ImageTk.PhotoImage(image=Image.fromarray(self._cam_preview_frame).resize((800, 480))); self.cam_canvas.create_image(0, 0, anchor="nw", image=cimg); self.cam_canvas.img = cimg
+            self.lbl_cam_status.config(text="🟢 Live Feed Active" if self.last_data["top"]["dist"]>0 or self.last_data["bottom"]["dist"]>0 else "🟡 Waiting for markers...", fg=C_GREEN if self.last_data["top"]["dist"]>0 else C_AMBER)
+
+        # Telemetry update
+        for k in ["top", "bottom"]:
+            d = self.last_data[k]; v = self.tele_vars[k]
+            for kn in ["A", "X", "TR", "BR", "B", "C"]: v[kn].set(f"{d[kn][0]:.1f}, {d[kn][1]:.1f}, {d[kn][2]:.1f}")
+            v["L_ROL"].set(f"{d['L_A'][0]:.1f}°"); v["L_ROT"].set(f"{d['L_A'][1]:.1f}°"); v["L_Z"].set(f"{d['L_z']:.1f}")
+            v["R_ROL"].set(f"{d['R_A'][0]:.1f}°"); v["R_ROT"].set(f"{d['R_A'][1]:.1f}°"); v["R_Z"].set(f"{d['R_z']:.1f}")
+
         self._mv_tick(); self.root.after(33, self.update_gui_loop)
 
 if __name__ == "__main__":
