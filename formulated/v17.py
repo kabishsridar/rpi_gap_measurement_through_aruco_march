@@ -11,8 +11,8 @@ import log
 SZ, DICT, RES, N = 53.8, cv.aruco.DICT_4X4_50, (1280, 720), 5
 C = {'bg':"#0f172a", 'p':"#1e293b", 'c':"#334155", 'a':"#38bdf8", 't':"#fb923c", 
      'b':"#c084fc", 'g':"#4ade80", 'r':"#f87171", 'tx':"#f8fafc", 'm':"#94a3b8", 'w':"#fbbf24"}
-F = {'t':("Inter",16,"bold"), 'h':("Inter",13,"bold"), 'b':("Inter",12), 
-     's':("Inter",10), 'd':("Inter",36,"bold"), 'm':("Consolas",13), 'bt':("Inter",14,"bold")}
+F = {'t':("Inter",20,"bold"), 'h':("Inter",18,"bold"), 'b':("Inter",16), 
+     's':("Inter",14), 'd':("Inter",32,"bold"), 'm':("Consolas",18), 'bt':("Inter",14,"bold")}
 
 def rot_to_euler(R):
     """
@@ -92,9 +92,9 @@ class MeasurementApp:
         
         bf = tk.Frame(r, bg=C['bg']); bf.pack(pady=20, fill="x", padx=12)
         h = lambda b, n, h: (b.bind("<Enter>", lambda e: b.config(bg=h)), b.bind("<Leave>", lambda e: b.config(bg=n)))
-        self.b_st = tk.Button(bf, text="▶ START", bg=C['g'], fg=C['bg'], font=F['bt'], relief="flat", command=self._mv_st); self.b_st.pack(side="left", expand=True, fill="x", padx=6); h(self.b_st, C['g'], "#86efac")
-        self.b_sp = tk.Button(bf, text="■ STOP", bg=C['r'], fg=C['bg'], font=F['bt'], relief="flat", state="disabled", command=self._mv_sp); self.b_sp.pack(side="left", expand=True, fill="x", padx=6); h(self.b_sp, C['r'], "#fca5a5")
-        tk.Button(bf, text="↺", bg=C['c'], fg="white", font=F['bt'], relief="flat", command=self._mv_rs).pack(side="left", padx=6)
+        self.b_st = tk.Button(bf, text="▶ START SESSION", bg=C['g'], fg=C['bg'], font=F['bt'], relief="flat", padx=10, pady=10, command=self._mv_st); self.b_st.pack(side="left", expand=True, fill="x", padx=6); h(self.b_st, C['g'], "#86efac")
+        self.b_sp = tk.Button(bf, text="■ STOP (SAVE)", bg=C['r'], fg=C['bg'], font=F['bt'], relief="flat", state="disabled", padx=10, pady=10, command=self._mv_sp); self.b_sp.pack(side="left", expand=True, fill="x", padx=6); h(self.b_sp, C['r'], "#fca5a5")
+        tk.Button(bf, text="↺", bg=C['c'], fg="white", font=F['bt'], relief="flat", width=5, pady=10, command=self._mv_rs).pack(side="left", padx=6)
 
         self.m_res = {}
         for k, n, col in [("top","UPPER",C['t']), ("bottom","LOWER",C['b'])]:
@@ -125,8 +125,8 @@ class MeasurementApp:
         for k, n, col in [("top","TOP",C['t']), ("bottom","BOTTOM",C['b'])]:
             f = tk.LabelFrame(t, text=f" {n} ", font=F['t'], fg=col, bg=C['bg'], padx=15, pady=15); f.pack(side="left", fill="both", expand=True, padx=20, pady=20)
             for v in ["A","X","TR","BR","B","C","L_ROL","L_ROT","L_Z","L_PITCH","L_YAW","R_ROL","R_ROT","R_Z","R_PITCH","R_YAW"]:
-                r = tk.Frame(f, bg=C['p'], highlightbackground=C['c'], highlightthickness=1); r.pack(fill="x", pady=2)
-                tk.Label(r, text=v, font=F['h'], fg=C['m'], bg=C['p']).pack(side="left", padx=10)
+                r = tk.Frame(f, bg=C['p'], highlightbackground=C['c'], highlightthickness=1); r.pack(fill="x", pady=4)
+                tk.Label(r, text=v, font=F['b'], fg=C['m'], bg=C['p']).pack(side="left", padx=10)
                 sv = tk.StringVar(value="—"); tk.Label(r, textvariable=sv, font=F['m'], fg=C['tx'], bg=C['p']).pack(side="right", padx=10); self.tv[k][v] = sv
 
     def _build_set(self):
@@ -134,8 +134,8 @@ class MeasurementApp:
         rf = tk.LabelFrame(sc, text=" Ref Side ", bg=C['p'], fg=C['tx'], font=F['h'], padx=20, pady=10); rf.pack(fill="x", pady=10)
         for c in ["Left","Right"]: tk.Radiobutton(rf, text=c, variable=self.fixed_side, value=c, bg=C['p'], fg=C['tx'], selectcolor=C['bg'], font=F['b']).pack(side="left", padx=20)
         def sld(l, v, col, lo, hi):
-            f = tk.LabelFrame(sc, text=f" {l} ", bg=C['p'], font=F['h'], fg=col, padx=20, pady=10); f.pack(fill="x", pady=5)
-            s = tk.Scale(f, from_=lo, to=hi, resolution=0.1, orient="horizontal", variable=v, bg=C['p'], fg=C['tx'], troughcolor=C['bg'], length=600); s.pack(side="left")
+            f = tk.LabelFrame(sc, text=f" {l} ", bg=C['p'], font=F['h'], fg=col, padx=20, pady=5); f.pack(fill="x", pady=5)
+            s = tk.Scale(f, from_=lo, to=hi, resolution=0.1, orient="horizontal", variable=v, bg=C['p'], fg=C['tx'], troughcolor=C['bg'], length=800, highlightthickness=0, font=F['s']); s.pack(side="left", padx=20)
             e = tk.Entry(f, width=8, bg=C['bg'], fg=C['m'], bd=0, font=F['m'])
             e.insert(0, str(v.get())); e.pack(side="left", padx=10)
             def _sync(*_):
@@ -146,19 +146,24 @@ class MeasurementApp:
                 try: v.set(float(e.get()))
                 except: _sync()
                 self.root.focus()
-            def _on_foc(_):
-                e.config(fg=C['tx']); e.delete(0, tk.END)
-            e.bind("<FocusIn>", _on_foc)
+            e.bind("<FocusIn>", lambda _: (e.config(fg=C['tx']), e.delete(0, tk.END)))
             e.bind("<Return>", _cmt); e.bind("<FocusOut>", _cmt); return s
-        sld("Upper Size", self.size_top, C['t'], 30, 100); sld("Lower Size", self.size_bot, C['b'], 30, 100)
-        self.rs = sld("Rot Thresh", self.rot_threshold, C['tx'], 0, 45)
-        sld("Pitch Thresh", self.p_th, "#8e44ad", 1, 45); sld("Yaw Thresh", self.y_th, "#16a085", 1, 45)
-        tf = tk.LabelFrame(sc, text=" Logic ", bg=C['p'], fg=C['tx'], font=F['h'], padx=20, pady=10); tf.pack(fill="x", pady=10)
-        self.tc = tk.Canvas(tf, width=80, height=40, bg=C['p'], highlightthickness=0); self.tc.pack(side="left")
-        self.tl = tk.Label(tf, text="", font=F['h'], bg=C['p']); self.tl.pack(side="left", padx=20)
+        sld("Upper Pair Marker Size (mm)", self.size_top, C['t'], 10, 200)
+        sld("Bottom Pair Marker Size (mm)", self.size_bot, C['b'], 10, 200)
+        self.rs = sld("Rotation Threshold ° (in-plane / formula switch)", self.rot_threshold, C['tx'], 0, 45)
+        sld("Pitch Threshold ° (forward / backward tilt warning)", self.p_th, C['b'], 0, 45)
+        sld("Yaw Threshold ° (left / right tilt — 'one side in' warning)", self.y_th, C['g'], 0, 45)
+        tf = tk.LabelFrame(sc, text=" Measurement Logic Options ", bg=C['p'], fg=C['tx'], font=F['h'], padx=20, pady=10); tf.pack(fill="x", pady=10)
+        self.tc = tk.Canvas(tf, width=60, height=30, bg=C['p'], highlightthickness=0); self.tc.pack(side="left", padx=20)
+        self.tl = tk.Label(tf, text="", font=F['b'], bg=C['p']); self.tl.pack(side="left")
         def _ut(*_):
-            on = self.u_ang.get(); self.tl.config(text="ON" if on else "OFF", fg=C['g'] if on else C['r']); self.rs.config(state="normal" if on else "disabled")
-            self.tc.delete("all"); self.tc.create_oval(4,4,76,36, fill=C['g'] if on else "#b2bec3", outline=""); self.tc.create_oval((58 if on else 22)-14, 6, (58 if on else 22)+14, 34, fill="white", outline="")
+            on = self.u_ang.get()
+            self.tl.config(text="ON — Using Pure Perpendicular Logic Only" if on else "OFF — Always use Perpendicular Formula (v8 High-Precision)", fg=C['a'] if on else C['r'])
+            self.tc.delete("all")
+            col = C['a'] if on else "#64748b"
+            self.tc.create_oval(2, 2, 58, 28, fill=col, outline="")
+            if on: self.tc.create_oval(32, 4, 56, 26, fill="white", outline="")
+            else: self.tc.create_oval(4, 4, 28, 26, fill="white", outline="")
         self.tc.bind("<Button-1>", lambda e: (self.u_ang.set(not self.u_ang.get()), _ut())); _ut()
 
     def _build_cam(self):
@@ -270,10 +275,33 @@ class MeasurementApp:
                 for k in ["top","bottom"]: self.last_data[k].update({"dist":0, "L_d":0, "R_d":0})
             for k, col in [("top",(0,165,255)),("bottom",(255,0,255))]:
                 d = self.last_data[k]
+                issues = 0
+                if not d["L_d"]: issues += 1
+                if not d["R_d"]: issues += 1
+                if d["L_d"]:
+                    if abs(d["L_pitch"]) > self.p_th.get(): issues += 1
+                    if abs(d["L_yaw"]) > self.y_th.get(): issues += 1
+                if d["R_d"]:
+                    if abs(d["R_pitch"]) > self.p_th.get(): issues += 1
+                    if abs(d["R_yaw"]) > self.y_th.get(): issues += 1
+
                 if d["dist"]>0 and d["p1"]:
                     p1, X3 = d["p1"], np.array([d["X"]], np.float64).reshape(1,1,3)
                     p2 = tuple(cv.projectPoints(X3, np.zeros(3), np.zeros(3), K, dist_c)[0][0].ravel().astype(int)) if d["X"][2]>0 else d["p2"]
-                    cv.line(frame, p1, p2, col, 3); cv.circle(frame, p2, 6, (0,255,0), -1); cv.putText(frame, f"{k.upper()}: {d['dist']:.2f}mm", (p1[0], p1[1]-12), 0, 0.6, col, 2)
+                    cv.line(frame, p1, p2, col, 3); cv.circle(frame, p2, 6, (0,255,0), -1); 
+                    
+                    # Draw Measurement Text
+                    cv.putText(frame, f"{d['dist']:.2f}mm", (p2[0]+10, p2[1]), 0, 0.6, (255, 0, 255), 2)
+
+                    # Draw Issues Box (if any)
+                    if issues > 0:
+                        mid_x, mid_y = (p1[0] + p2[0]) // 2, (p1[1] + p2[1]) // 2
+                        txt = f"ISSUES: {issues}"
+                        (tw, th), _ = cv.getTextSize(txt, 0, 0.5, 2)
+                        bx, by, bw, bh = mid_x - tw//2 - 5, mid_y - 30 - th - 5, tw + 10, th + 10
+                        cv.rectangle(frame, (bx, by), (bx+bw, by+bh), (0,0,0), -1)
+                        cv.rectangle(frame, (bx, by), (bx+bw, by+bh), (0,165,255), 2)
+                        cv.putText(frame, txt, (bx+5, by+bh-7), 0, 0.5, (0,255,255), 2)
             self.current_frame = self._cam_preview_frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
 
     def load_calib(self):

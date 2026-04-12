@@ -31,7 +31,7 @@ class SmartEntry(tk.Entry):
 class MeasurementApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Dual-Pair ArUco Measurement v17")
+        self.root.title("Dual-Pair ArUco Measurement v16")
         self.root.geometry("1600x960")
         self.root.configure(bg=C_BG)
 
@@ -39,15 +39,15 @@ class MeasurementApp:
         self.size_top         = tk.DoubleVar(value=DEFAULT_MARKER_SIZE)
         self.size_bot         = tk.DoubleVar(value=DEFAULT_MARKER_SIZE)
         self.fixed_side       = tk.StringVar(value="Left")
-        self.rot_threshold    = tk.DoubleVar(value=5.0)
-        self.pitch_threshold  = tk.DoubleVar(value=6.0)
-        self.yaw_threshold    = tk.DoubleVar(value=4.0)
+        self.rot_threshold    = tk.DoubleVar(value=12.0)
+        self.pitch_threshold  = tk.DoubleVar(value=10.0)
+        self.yaw_threshold    = tk.DoubleVar(value=10.0)
         self.use_v8_only      = tk.BooleanVar(value=False)
 
         # ── Camera Vars ──
         self.cam_ae           = tk.BooleanVar(value=True)
         self.cam_exposure     = tk.IntVar(value=10000)
-        self.cam_gain         = tk.DoubleVar(value=1.0)
+        self.cam_gain         = tk.DoubleVar(value=2.0)
         self.cam_awb          = tk.BooleanVar(value=True)
         self.cam_awb_mode     = tk.StringVar(value="Auto")
         self.cam_brightness   = tk.DoubleVar(value=0.0)
@@ -128,9 +128,9 @@ class MeasurementApp:
         self.mv_prog_bar = ttk.Progressbar(right, length=380, maximum=COLLECT_N, mode="determinate"); self.mv_prog_bar.pack(pady=4)
 
         bf = tk.Frame(right, bg=C_BG); bf.pack(pady=10, fill="x", padx=12)
-        self.btn_start = tk.Button(bf, text="▶ START SESSION", bg=C_GREEN, fg=C_BG, font=F_BTN, padx=20, pady=10, command=self._mv_start); self.btn_start.pack(side="left", expand=True, fill="x", padx=6)
-        self.btn_stop = tk.Button(bf, text="■ STOP (SAVE)", bg=C_RED, fg=C_BG, font=F_BTN, state="disabled", padx=20, pady=10, command=self._mv_stop); self.btn_stop.pack(side="left", expand=True, fill="x", padx=6)
-        self.btn_reset = tk.Button(bf, text="↺", bg=C_CARD, fg="white", font=F_BTN, width=5, pady=10, command=self._mv_reset); self.btn_reset.pack(side="right", padx=6)
+        self.btn_start = tk.Button(bf, text="▶ START SESSION", bg=C_GREEN, fg=C_BG, font=F_BTN, padx=10, pady=10, command=self._mv_start); self.btn_start.pack(side="left", expand=True, fill="x", padx=6)
+        self.btn_stop = tk.Button(bf, text="■ STOP (SAVE)", bg=C_RED, fg=C_BG, font=F_BTN, state="disabled", padx=10, pady=10, command=self._mv_stop); self.btn_stop.pack(side="left", expand=True, fill="x", padx=6)
+        self.btn_reset = tk.Button(bf, text="↺", bg=C_CARD, fg="white", font=F_BTN, width=5, pady=10, command=self._mv_reset); self.btn_reset.pack(side="left", padx=6)
 
         for key, title, col in [("top", "UPPER", C_TOP), ("bottom", "LOWER", C_BOT)]:
             row = tk.Frame(right, bg=C_PANEL, bd=1, relief="solid"); row.pack(fill="x", padx=12, pady=4)
@@ -146,38 +146,49 @@ class MeasurementApp:
         tab = ttk.Frame(self.tabs); self.tabs.add(tab, text=" 🛸  Dual Telemetry ")
         mtf = tk.Frame(tab, bg=C_BG); mtf.pack(fill="both", expand=True)
         self.tele_vars = {"top": {}, "bottom": {}}
-        v_show = ["A", "X", "TR", "BR", "B", "C", "L_ROL", "L_PIT", "L_YAW", "L_Z", "R_ROL", "R_PIT", "R_YAW", "R_Z"]
-        for key, title, col in [("top", "TOP", C_TOP), ("bottom", "BOT", C_BOT)]:
-            cf = tk.LabelFrame(mtf, text=f" {title} DATA ", font=F_HEAD, fg=col, bg=C_BG); cf.pack(side="left", fill="both", expand=True, padx=20, pady=10)
+        v_show = ["A", "X", "TR", "BR", "B", "C", "L_ROL", "L_ROT", "L_Z", "L_PITCH", "L_YAW", "R_ROL", "R_ROT", "R_Z", "R_PITCH", "R_YAW"]
+        for key, title, col in [("top", "TOP PAIR TELEMETRY", C_TOP), ("bottom", "BOTTOM PAIR TELEMETRY", C_BOT)]:
+            cf = tk.LabelFrame(mtf, text=f" {title} ", font=F_HEAD, fg=col, bg=C_BG, padx=20, pady=15); cf.pack(side="left", fill="both", expand=True, padx=20, pady=10)
             for v_name in v_show:
-                row = tk.Frame(cf, bg=C_PANEL); row.pack(fill="x", pady=2, padx=10)
-                tk.Label(row, text=v_name, font=F_SMALL, bg=C_PANEL, fg=C_TEXT_MED).pack(side="left", padx=10)
+                row = tk.Frame(cf, bg=C_PANEL); row.pack(fill="x", pady=4, padx=10)
+                tk.Label(row, text=v_name, font=F_BODY, bg=C_PANEL, fg=C_TEXT_MED).pack(side="left", padx=10)
                 sv = tk.StringVar(value="—"); tk.Label(row, textvariable=sv, font=F_MONO, bg=C_PANEL, fg=C_TEXT_BRT).pack(side="right", padx=10)
                 self.tele_vars[key][v_name] = sv
 
     def _build_tab_settings(self):
         tab = ttk.Frame(self.tabs); self.tabs.add(tab, text=" ⚙  Machine Configuration ")
         sc = tk.Frame(tab, bg=C_BG); sc.pack(fill="both", expand=True, padx=60, pady=20)
-        rf = tk.LabelFrame(sc, text=" Reference Side (Fixed ArUco) ", bg=C_PANEL, fg=C_TEXT_BRT, font=F_HEAD); rf.pack(fill="x", pady=10)
-        for choice in ["Left", "Right"]: tk.Radiobutton(rf, text=choice, variable=self.fixed_side, value=choice, bg=C_PANEL, fg=C_TEXT_BRT, font=F_BODY).pack(side="left", padx=30)
+        rf = tk.LabelFrame(sc, text=" Reference Side (Fixed ArUco) ", bg=C_PANEL, fg=C_TEXT_BRT, font=F_HEAD, padx=20, pady=10); rf.pack(fill="x", pady=10)
+        for choice in ["Left", "Right"]: tk.Radiobutton(rf, text=choice, variable=self.fixed_side, value=choice, bg=C_PANEL, fg=C_TEXT_BRT, font=F_BODY, selectcolor=C_BG).pack(side="left", padx=30)
         def sld(l, v, c, lo, hi):
-            f = tk.LabelFrame(sc, text=f" {l} ", bg=C_PANEL, fg=c, font=F_HEAD); f.pack(fill="x", pady=5)
-            tk.Scale(f, from_=lo, to=hi, resolution=0.1, orient="horizontal", variable=v, bg=C_PANEL, length=600).pack(side="left", padx=20)
+            f = tk.LabelFrame(sc, text=f" {l} ", bg=C_PANEL, fg=c, font=F_HEAD, padx=20, pady=5); f.pack(fill="x", pady=5)
+            tk.Scale(f, from_=lo, to=hi, resolution=0.1, orient="horizontal", variable=v, bg=C_PANEL, length=800, fg=C_TEXT_MED, highlightthickness=0, font=F_SMALL).pack(side="left", padx=20)
             SmartEntry(f, v, width=12, font=F_MONO, bg=C_BG, fg=C_ACCENT).pack(side="left", padx=10)
         sld("Upper Pair Marker Size (mm)", self.size_top, C_TOP, 10, 200)
         sld("Bottom Pair Marker Size (mm)", self.size_bot, C_BOT, 10, 200)
         sld("Rotation Threshold ° (in-plane / formula switch)", self.rot_threshold, C_TEXT_BRT, 0, 45)
         sld("Pitch Threshold ° (forward / backward tilt warning)", self.pitch_threshold, C_BOT, 0, 45)
         sld("Yaw Threshold ° (left / right tilt — 'one side in' warning)", self.yaw_threshold, C_GREEN, 0, 45)
-        lf = tk.LabelFrame(sc, text=" Measurement Logic Options ", bg=C_PANEL, fg=C_TEXT_BRT, font=F_HEAD); lf.pack(fill="x", pady=10)
+        lf = tk.LabelFrame(sc, text=" Measurement Logic Options ", bg=C_PANEL, fg=C_TEXT_BRT, font=F_HEAD, padx=20, pady=10); lf.pack(fill="x", pady=10)
         tf = tk.Frame(lf, bg=C_PANEL); tf.pack(fill="x", expand=True, pady=10)
-        self.logic_btn = tk.Button(tf, text="🔘", font=("Inter", 20), bd=0, bg=C_PANEL, command=self._toggle_logic); self.logic_btn.pack(side="left", padx=20)
+        self.logic_canvas = tk.Canvas(tf, width=60, height=30, bg=C_PANEL, highlightthickness=0); self.logic_canvas.pack(side="left", padx=20)
+        self.logic_canvas.bind("<Button-1>", lambda e: self._toggle_logic())
         self.logic_lbl = tk.Label(tf, text="OFF — Always use Perpendicular Formula (v8 High-Precision)", font=F_BODY, fg=C_RED, bg=C_PANEL); self.logic_lbl.pack(side="left")
+        self._draw_toggle()
+
+    def _draw_toggle(self):
+        self.logic_canvas.delete("all")
+        active = self.use_v8_only.get()
+        col = C_ACCENT if active else "#64748b"
+        self.logic_canvas.create_oval(2, 2, 58, 28, fill=col, outline="")
+        if active: self.logic_canvas.create_oval(32, 4, 56, 26, fill="white", outline="")
+        else: self.logic_canvas.create_oval(4, 4, 28, 26, fill="white", outline="")
 
     def _toggle_logic(self):
         self.use_v8_only.set(not self.use_v8_only.get())
-        if self.use_v8_only.get(): self.logic_btn.config(text="🔵", fg=C_ACCENT); self.logic_lbl.config(text="ON — Using Pure Perpendicular Logic Only", fg=C_ACCENT)
-        else: self.logic_btn.config(text="🔘", fg="white"); self.logic_lbl.config(text="OFF — Always use Perpendicular Formula (v8 High-Precision)", fg=C_RED)
+        if self.use_v8_only.get(): self.logic_lbl.config(text="ON — Using Pure Perpendicular Logic Only", fg=C_ACCENT)
+        else: self.logic_lbl.config(text="OFF — Always use Perpendicular Formula (v8 High-Precision)", fg=C_RED)
+        self._draw_toggle()
 
     def _build_tab_cam(self):
         tab = ttk.Frame(self.tabs); self.tabs.add(tab, text=" 📷  Camera Controls ")
@@ -266,17 +277,22 @@ class MeasurementApp:
         self.warn_strip.config(state="disabled")
         if self._cam_preview_frame is not None:
             cimg = ImageTk.PhotoImage(image=Image.fromarray(self._cam_preview_frame).resize((800, 480))); self.cam_canvas.create_image(0, 0, anchor="nw", image=cimg); self.cam_canvas.img = cimg
-            any_det = self.last_data["top"]["L_det"] or self.last_data["bottom"]["L_det"]
-            self.lbl_det_status.config(text="STATUS: Markers detected" if any_det else "STATUS: Searching...", fg=C_GREEN if any_det else C_AMBER)
+            top_det = self.last_data["top"]["L_det"] and self.last_data["top"]["R_det"]
+            bot_det = self.last_data["bottom"]["L_det"] and self.last_data["bottom"]["R_det"]
+            if top_det and bot_det: det_text, det_color = "STATUS: Both pairs detected", C_GREEN
+            elif top_det or bot_det: det_text, det_color = "STATUS: One pair detected", C_AMBER
+            else: det_text, det_color = "STATUS: Searching...", C_AMBER
+            self.lbl_det_status.config(text=det_text, fg=det_color)
             mb = self.last_data["top"]["mean_b"]
             if mb < 40: self.lbl_light_status.config(text="LIGHTING PROFILE: TOO DARK", fg=C_RED)
             elif mb > 220: self.lbl_light_status.config(text="LIGHTING PROFILE: TOO BRIGHT", fg=C_RED)
             else: self.lbl_light_status.config(text="LIGHTING PROFILE: NOMINAL", fg=C_GREEN)
         for k in ["top", "bottom"]:
             d = self.last_data[k]; v = self.tele_vars[k]
-            for kn in ["A", "X", "TR", "BR", "B", "C"]: v[kn].set(f"{d[kn][0]:.1f}, {d[kn][1]:.1f}, {d[kn][2]:.1f}")
-            v["L_ROL"].set(f"{d['L_rol']:.1f}°"); v["L_PIT"].set(f"{d['L_pit']:+.1f}°"); v["L_YAW"].set(f"{d['L_yaw']:+.1f}°"); v["L_Z"].set(f"{d['L_z']:.1f}")
-            v["R_ROL"].set(f"{d['R_rol']:.1f}°"); v["R_PIT"].set(f"{d['R_pit']:+.1f}°"); v["R_YAW"].set(f"{d['R_yaw']:+.1f}°"); v["R_Z"].set(f"{d['R_z']:.1f}")
+            v["A"].set(f"{d['A'][2]:.2f}"); v["X"].set(f"{d['X'][2]:.2f}")
+            for kn in ["TR", "BR", "B", "C"]: v[kn].set(f"{d[kn][0]:.1f}, {d[kn][1]:.1f}, {d[kn][2]:.1f}")
+            v["L_ROL"].set(f"{d['L_rol']:.2f}° (roll)"); v["L_ROT"].set(f"{d['rot_2d']:.2f}° (in-plane)"); v["L_Z"].set(f"{d['L_z']:.1f}"); v["L_PITCH"].set(f"{d['L_pit']:+.2f}"); v["L_YAW"].set(f"{d['L_yaw']:+.2f}")
+            v["R_ROL"].set(f"{d['R_rol']:.2f}° (roll)"); v["R_ROT"].set(f"{d['rot_2d']:.2f}° (in-plane)"); v["R_Z"].set(f"{d['R_z']:.1f}"); v["R_PITCH"].set(f"{d['R_pit']:+.2f}"); v["R_YAW"].set(f"{d['R_yaw']:+.2f}")
         self._mv_tick(); self.root.after(33, self.update_gui_loop)
 
 if __name__ == "__main__":
