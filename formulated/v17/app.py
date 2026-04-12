@@ -333,25 +333,41 @@ class MeasurementApp:
                             except: pass
                 l_u = curr
             
+            # Draw live lines for the latest detection (every frame)
+            for m, k, col in [(top_m, "top", (0, 165, 255)), (bot_m, "bottom", (255, 0, 255))]:
+                if m:
+                    # Get center points of the relevant edges
+                    is_rf = (k == "bottom")
+                    c = m["c"]
+                    p1 = tuple(((c[1 if not is_rf else 0] + c[2 if not is_rf else 3]) / 2).astype(int))
+                    p2 = tuple(((c[0 if not is_rf else 1] + c[3 if not is_rf else 2]) / 2).astype(int))
+                    cv.line(frame, p1, p2, col, 2)
+
             for k, color in [("top",(0,165,255)), ("bottom",(255,0,255))]:
                 d = self.last_data[k]
                 if d["dist"]>0 and d["p1_px"]:
                     X_3d = np.array([d["X"]], dtype=np.float64).reshape(1,1,3)
-                    if d["X"][2]>0: p_proj, _ = cv.projectPoints(X_3d, np.zeros(3), np.zeros(3), K, dc); p2 = tuple(p_proj[0].ravel().astype(int))
-                    else: p2 = d["p2_px"]
+                    if d["X"][2]>0: 
+                        p_proj, _ = cv.projectPoints(X_3d, np.zeros(3), np.zeros(3), K, dc)
+                        p2_e = tuple(p_proj[0].ravel().astype(int))
+                    else: p2_e = d["p2_px"]
+                    cv.line(frame, d["p1_px"], p2_e, color, 3)
+                    cv.circle(frame, p2_e, 6, (0,255,0), -1)
+                    cv.putText(frame, f"{k.upper()}: {d['dist']:.2f}mm", (d["p1_px"][0], d["p1_px"][1]-12), 0, 0.6, color, 2)
+                    
                     # Warning badge lines
                     p_th, y_th, r_th = self.pitch_threshold.get(), self.yaw_threshold.get(), self.rot_threshold.get()
                     wlines = []
                     max_rot = d.get("rot_2d", 0.0)
                     if max_rot > r_th: wlines.append(f"ROT {max_rot:.1f}deg")
-                    lp = d.get("L_pitch", 0.0); rp = d.get("R_pitch", 0.0)
+                    lp, rp = d.get("L_pitch", 0.0), d.get("R_pitch", 0.0)
                     if abs(lp) > p_th: wlines.append(f"L-PITCH {lp:+.1f}d")
                     if abs(rp) > p_th: wlines.append(f"R-PITCH {rp:+.1f}d")
-                    ly = d.get("L_yaw", 0.0); ry = d.get("R_yaw", 0.0)
+                    ly, ry = d.get("L_yaw", 0.0), d.get("R_yaw", 0.0)
                     if abs(ly) > y_th: wlines.append(f"L-YAW {ly:+.1f}d")
                     if abs(ry) > y_th: wlines.append(f"R-YAW {ry:+.1f}d")
                     if wlines:
-                        bx1 = max(0, d["p1_px"][0] - 5); by1 = min(RESOLUTION[1] - 30, d["p1_px"][1] + 22)
+                        bx1 = max(0, d["p1_px"][0] - 5); by1 = min(600, d["p1_px"][1] + 22)
                         cv.rectangle(frame, (bx1, by1), (bx1 + 130, by1 + 25), (20, 20, 20), -1)
                         cv.rectangle(frame, (bx1, by1), (bx1 + 130, by1 + 25), (0, 30, 180), 2)
                         cv.putText(frame, f"ISSUES: {len(wlines)}", (bx1 + 8, by1 + 18), cv.FONT_HERSHEY_SIMPLEX, 0.45, (0, 220, 255), 2)

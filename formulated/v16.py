@@ -320,7 +320,6 @@ class MeasurementApp:
                 self.mv_init_lbl_top, self.mv_final_lbl_top, self.mv_delta_lbl_top = il, fl, dl
             else:
                 self.mv_init_lbl_bot, self.mv_final_lbl_bot, self.mv_delta_lbl_bot = il, fl, dl
-                self.mv_delta_lbl_bot = delta_lbl
 
         # Spacer at bottom to keep rows centered/filling space
         tk.Frame(right, bg=C_BG).pack(fill="both", expand=True)
