@@ -38,7 +38,11 @@ if successful >= 10:
     print(f"Calibration successful!")
     print(f"Reprojection error: {ret:.4f} pixels")
     print(f"Camera Matrix:\n{mtx}")
-    np.savez("camera_params.npz", mtx=mtx, dist=dist)
-    print(f"\nParameters saved to 'camera_params.npz'")
+    
+    side = input("\nIs this calibration for the Right side? (y/n): ").strip().lower()
+    fn = "camera_params_2.npz" if side == 'y' else "camera_params.npz"
+    
+    np.savez(fn, camera_matrix=mtx, dist_coeff=dist)
+    print(f"\nParameters saved to '{fn}'")
 else:
     print(f"\nError: Need at least 10 detections (Only found {successful}).")

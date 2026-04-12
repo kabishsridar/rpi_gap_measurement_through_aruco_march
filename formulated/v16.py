@@ -708,8 +708,7 @@ class MeasurementApp:
         if os.path.exists(f):
             d = np.load(f)
             return d['camera_matrix'], d['dist_coeff']
-        return (np.array([[1280, 0, 640], [0, 1280, 360], [0, 0, 1]], dtype=np.float32),
-                np.zeros(5))
+        return np.eye(3), np.zeros(5)
 
     # ══════════════════════════════════════════════════════════════════════════
     #  Measurement loop  (background thread)
