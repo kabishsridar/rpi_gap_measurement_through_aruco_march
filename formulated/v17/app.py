@@ -334,13 +334,12 @@ class MeasurementApp:
                 l_u = curr
             
             # Draw live lines for the latest detection (every frame)
-            for m, k, col in [(top_m, "top", (0, 165, 255)), (bot_m, "bottom", (255, 0, 255))]:
-                if m:
-                    # Get center points of the relevant edges
-                    is_rf = (k == "bottom")
-                    c = m["c"]
-                    p1 = tuple(((c[1 if not is_rf else 0] + c[2 if not is_rf else 3]) / 2).astype(int))
-                    p2 = tuple(((c[0 if not is_rf else 1] + c[3 if not is_rf else 2]) / 2).astype(int))
+            for pair, k, col in [(top_m, "top", (0, 165, 255)), (bot_m, "bottom", (255, 0, 255))]:
+                if pair and len(pair) == 2:
+                    m1, m2 = sorted(pair, key=lambda x: x["x"])
+                    is_rf = (k == "bottom"); c1, c2 = m1["c"], m2["c"]
+                    p1 = tuple(((c1[1 if not is_rf else 0] + c1[2 if not is_rf else 3]) / 2).astype(int))
+                    p2 = tuple(((c2[0 if not is_rf else 1] + c2[3 if not is_rf else 2]) / 2).astype(int))
                     cv.line(frame, p1, p2, col, 2)
 
             for k, color in [("top",(0,165,255)), ("bottom",(255,0,255))]:
