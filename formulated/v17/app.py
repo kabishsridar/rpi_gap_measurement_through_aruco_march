@@ -24,6 +24,7 @@ class MeasurementApp:
         self.paused = False
         
         # State
+        log.init_log()
         self.mv_state = "ready"
         self._init_data = {"top": None, "bottom": None}
         self.last_data = {
