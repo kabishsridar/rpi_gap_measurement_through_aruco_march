@@ -20,8 +20,13 @@ class SmartEntry(tk.Entry):
         self.variable.trace_add("write", self._update_entry)
 
     def _update_var(self, event=None):
-        try: self.variable.set(float(self.get()))
-        except: self.delete(0, tk.END); self.insert(0, str(self.variable.get()))
+        try:
+            self.variable.set(float(self.get()))
+            self.selection_clear()
+            self.winfo_toplevel().focus_set()
+        except:
+            self.delete(0, tk.END)
+            self.insert(0, str(self.variable.get()))
 
     def _update_entry(self, *args):
         if self.focus_get() != self:
@@ -205,7 +210,8 @@ class MeasurementApp:
         tk.Checkbutton(af, text="Hardware Auto White Balance", variable=self.cam_awb, bg=C_PANEL, fg=C_TEXT_MED, selectcolor=C_BG, command=self._apply_cam).pack(padx=10, pady=5)
         mf = tk.Frame(af, bg=C_PANEL); mf.pack(fill="x", pady=2)
         tk.Label(mf, text="Mode:", font=F_SMALL, bg=C_PANEL, fg=C_TEXT_MED).pack(side="left", padx=5)
-        for m in ["Auto", "Tungsten", "Fluorescent", "Indoor", "Daylight", "Cloudy"]: tk.Radiobutton(mf, text=m, variable=self.cam_awb_mode, value=m, bg=C_PANEL, fg=C_TEXT_MED, font=("Inter", 8), command=self._apply_cam).pack(side="left")
+        self.AWB_MAP = {"Auto": 0, "Tungsten": 1, "Fluorescent": 2, "Indoor": 3, "Daylight": 4, "Cloudy": 5}
+        for m in self.AWB_MAP.keys(): tk.Radiobutton(mf, text=m, variable=self.cam_awb_mode, value=m, bg=C_PANEL, fg=C_TEXT_MED, font=("Inter", 8), command=self._apply_cam).pack(side="left")
         crw("Brightness", self.cam_brightness, -1.0, 1.0, 0.05); crw("Contrast", self.cam_contrast, 0.0, 8.0, 0.1); crw("Saturation", self.cam_saturation, 0.0, 8.0, 0.1); crw("Sharpness", self.cam_sharpness, 0.0, 8.0, 0.1)
         tk.Button(cr, text="↺ Restore Factory Defaults", bg=C_RED, fg=C_BG, font=F_BTN, command=self._reset_cam).pack(fill="x", pady=10)
 
@@ -242,11 +248,25 @@ class MeasurementApp:
                     di, df = self.mv_dist_init[k], self.mv_dist_final[k]; il.config(text=f"INIT: {di:.3f} mm"); fl.config(text=f"FINAL: {df:.3f} mm"); dl.config(text=f"{df-di:+.3f} mm")
 
     def _apply_cam(self):
-        if self.pc:
-            try:
-                c = {"ExposureTime": int(self.cam_exposure.get()), "AnalogueGain": float(self.cam_gain.get()), "Brightness": self.cam_brightness.get(), "Contrast": self.cam_contrast.get(), "Saturation": self.cam_saturation.get(), "Sharpness": self.cam_sharpness.get()}
-                c["AeEnable"] = self.cam_ae.get(); c["AwbEnable"] = self.cam_awb.get(); c["AwbMode"] = self.cam_awb_mode.get(); self.pc.set_controls(c)
-            except: pass
+        if not self.pc: return
+        try:
+            ctrls = {
+                "Brightness": float(self.cam_brightness.get()),
+                "Contrast": float(self.cam_contrast.get()),
+                "Saturation": float(self.cam_saturation.get()),
+                "Sharpness": float(self.cam_sharpness.get()),
+                "AeEnable": bool(self.cam_ae.get()),
+                "AwbEnable": bool(self.cam_awb.get())
+            }
+            if not ctrls["AeEnable"]:
+                ctrls["ExposureTime"] = int(self.cam_exposure.get())
+                ctrls["AnalogueGain"] = float(self.cam_gain.get())
+            if not ctrls["AwbEnable"]:
+                ctrls["AwbMode"] = self.AWB_MAP.get(self.cam_awb_mode.get(), 0)
+            
+            self.pc.set_controls(ctrls)
+        except Exception as e:
+            print(f"[CAM ERROR] {e}")
 
     def _reset_cam(self): self.cam_ae.set(True); self.cam_exposure.set(10000); self.cam_gain.set(1.0); self.cam_awb.set(True); self.cam_awb_mode.set("Auto"); self.cam_brightness.set(0.0); self.cam_contrast.set(1.0); self.cam_saturation.set(1.0); self.cam_sharpness.set(1.0); self._apply_cam()
 

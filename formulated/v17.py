@@ -197,7 +197,8 @@ class MeasurementApp:
         # GAIN row removed as requested
         tk.Checkbutton(cr, text="AWB", variable=self.cam_awb, bg=C['p'], fg=C['tx'], selectcolor=C['bg'], command=self._app).pack(fill="x")
         wf = tk.Frame(cr, bg=C['p']); wf.pack(fill="x")
-        for m in AWB_MODES: tk.Radiobutton(wf, text=m, variable=self.cam_awbm, value=m, bg=C['p'], fg=C['tx'], selectcolor=C['bg'], font=F['s'], command=self._app).pack(side="left")
+        self.AWB_MAP = {"Auto": 0, "Tungsten": 1, "Fluorescent": 2, "Indoor": 3, "Daylight": 4, "Cloudy": 5}
+        for m in self.AWB_MAP.keys(): tk.Radiobutton(wf, text=m, variable=self.cam_awbm, value=m, bg=C['p'], fg=C['tx'], selectcolor=C['bg'], font=F['s'], command=self._app).pack(side="left")
         for l,v,lo,hi in [("BR",self.cam_br,-1,1),("CT",self.cam_ct,0,8),("SA",self.cam_sa,0,8),("SH",self.cam_sh,0,8)]: crow(l,v,lo,hi,0.1)
         tk.Button(cr, text="RESET", bg=C['r'], fg="white", font=F['bt'], relief="flat", command=self._r_cam).pack(pady=10, fill="x")
 
@@ -206,11 +207,23 @@ class MeasurementApp:
     def _mv_rs(self): self.mv_state="idle"; self.b_st.config(state="normal"); self.b_sp.config(state="disabled"); self.p_bar["value"]=0; self.wst.config(state="normal"); self.wst.delete("1.0",tk.END); self.wst.config(state="disabled")
     def _app(self):
         if not self.pc: return
-        p = {"AeEnable":self.cam_ae.get(), "AwbEnable":self.cam_awb.get(), "Brightness":self.cam_br.get(), "Contrast":self.cam_ct.get(), "Saturation":self.cam_sa.get(), "Sharpness":self.cam_sh.get()}
-        if not p["AeEnable"]: p.update({"ExposureTime":int(self.cam_exp.get()), "AnalogueGain":self.cam_gain.get()})
-        if not p["AwbEnable"]: p["AwbMode"] = AWB_MODES.get(self.cam_awbm.get(),0)
-        try: self.pc.set_controls(p)
-        except: pass
+        try:
+            p = {
+                "AeEnable": bool(self.cam_ae.get()), 
+                "AwbEnable": bool(self.cam_awb.get()), 
+                "Brightness": float(self.cam_br.get()), 
+                "Contrast": float(self.cam_ct.get()), 
+                "Saturation": float(self.cam_sa.get()), 
+                "Sharpness": float(self.cam_sh.get())
+            }
+            if not p["AeEnable"]: 
+                p["ExposureTime"] = int(self.cam_exp.get())
+                p["AnalogueGain"] = float(self.cam_gain.get())
+            if not p["AwbEnable"]: 
+                p["AwbMode"] = self.AWB_MAP.get(self.cam_awbm.get(), 0)
+            self.pc.set_controls(p)
+        except Exception as e:
+            print(f"[CAM ERROR] {e}")
     def _r_cam(self): self.cam_ae.set(1); self.cam_awb.set(1); self.cam_br.set(0); self.cam_ct.set(1); self.cam_sa.set(1); self.cam_sh.set(1); self._app()
 
     def m_loop(self):
