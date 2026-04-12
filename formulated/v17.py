@@ -133,7 +133,9 @@ class MeasurementApp:
     def _build_set(self):
         t = ttk.Frame(self.tabs); self.tabs.add(t, text=" ⚙ Machine "); sc = tk.Frame(t, bg=C['bg']); sc.pack(fill="both", expand=True, padx=80, pady=40)
         rf = tk.LabelFrame(sc, text=" Ref Side ", bg=C['p'], fg=C['tx'], font=F['h'], padx=20, pady=10); rf.pack(fill="x", pady=10)
-        for c in ["Left","Right"]: tk.Radiobutton(rf, text=c, variable=self.fixed_side, value=c, bg=C['p'], fg=C['tx'], selectcolor=C['bg'], font=F['b']).pack(side="left", padx=20)
+        self.rb_l = tk.Radiobutton(rf, text=" LEFT (FIXED) ", variable=self.fixed_side, value="Left", indicatoron=False, font=F['h'], width=20, pady=10, relief="flat", command=self._u_si); self.rb_l.pack(side="left", padx=(30, 5))
+        self.rb_r = tk.Radiobutton(rf, text=" RIGHT (FIXED) ", variable=self.fixed_side, value="Right", indicatoron=False, font=F['h'], width=20, pady=10, relief="flat", command=self._u_si); self.rb_r.pack(side="left", padx=5)
+        self._u_si()
         def sld(l, v, col, lo, hi):
             f = tk.LabelFrame(sc, text=f" {l} ", bg=C['p'], font=F['h'], fg=col, padx=20, pady=5); f.pack(fill="x", pady=5)
             s = tk.Scale(f, from_=lo, to=hi, resolution=0.1, orient="horizontal", variable=v, bg=C['p'], fg=C['tx'], troughcolor=C['bg'], length=800, highlightthickness=0, font=F['s']); s.pack(side="left", padx=20)
@@ -246,6 +248,13 @@ class MeasurementApp:
         except Exception as e:
             print(f"[CAM ERROR] {e}")
     def _r_cam(self): self.cam_ae.set(1); self.cam_awb.set(1); self.cam_br.set(0); self.cam_ct.set(1); self.cam_sa.set(1); self.cam_sh.set(1); self._app()
+    def _u_si(self):
+        if self.fixed_side.get() == "Left":
+            self.rb_l.config(bg=C['g'], fg=C['bg'], activebackground="#86efac")
+            self.rb_r.config(bg=C['p'], fg="white", activebackground=C['bg'])
+        else:
+            self.rb_r.config(bg=C['g'], fg=C['bg'], activebackground="#86efac")
+            self.rb_l.config(bg=C['p'], fg="white", activebackground=C['bg'])
 
     def m_loop(self):
         try:

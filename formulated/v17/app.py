@@ -161,7 +161,9 @@ class MeasurementApp:
         tab = ttk.Frame(self.tabs); self.tabs.add(tab, text=" ⚙  Machine Configuration ")
         sc = tk.Frame(tab, bg=C_BG); sc.pack(fill="both", expand=True, padx=60, pady=20)
         rf = tk.LabelFrame(sc, text=" Reference Side (Fixed ArUco) ", bg=C_PANEL, fg=C_TEXT_BRT, font=F_HEAD, padx=20, pady=10); rf.pack(fill="x", pady=10)
-        for choice in ["Left", "Right"]: tk.Radiobutton(rf, text=choice, variable=self.fixed_side, value=choice, bg=C_PANEL, fg=C_TEXT_BRT, font=F_BODY, selectcolor=C_GREEN).pack(side="left", padx=30)
+        self.rb_l = tk.Radiobutton(rf, text=" LEFT (FIXED) ", variable=self.fixed_side, value="Left", indicatoron=False, font=F_HEAD, width=20, pady=10, relief="flat", command=self._update_side_ui); self.rb_l.pack(side="left", padx=(40, 10))
+        self.rb_r = tk.Radiobutton(rf, text=" RIGHT (FIXED) ", variable=self.fixed_side, value="Right", indicatoron=False, font=F_HEAD, width=20, pady=10, relief="flat", command=self._update_side_ui); self.rb_r.pack(side="left", padx=10)
+        self._update_side_ui()
         def sld(l, v, c, lo, hi):
             f = tk.LabelFrame(sc, text=f" {l} ", bg=C_PANEL, fg=c, font=F_HEAD, padx=20, pady=5); f.pack(fill="x", pady=5)
             tk.Scale(f, from_=lo, to=hi, resolution=0.1, orient="horizontal", variable=v, bg=C_PANEL, length=800, fg=C_TEXT_MED, highlightthickness=0, font=F_SMALL).pack(side="left", padx=20)
@@ -288,7 +290,15 @@ class MeasurementApp:
         except Exception as e:
             print(f"[CAM ERROR] {e}")
 
-    def _reset_cam(self): self.cam_ae.set(True); self.cam_exposure.set(10000); self.cam_gain.set(1.0); self.cam_awb.set(True); self.cam_awb_mode.set("Auto"); self.cam_brightness.set(0.0); self.cam_contrast.set(1.0); self.cam_saturation.set(1.0); self.cam_sharpness.set(1.0); self._apply_cam()
+    def _reset_cam(self): self.cam_ae.set(True); self.cam_exposure.set(10000); self.cam_gain.set(2.0); self.cam_awb.set(True); self.cam_awb_mode.set("Auto"); self.cam_brightness.set(0.0); self.cam_contrast.set(1.0); self.cam_saturation.set(1.0); self.cam_sharpness.set(1.0); self._apply_cam()
+
+    def _update_side_ui(self):
+        if self.fixed_side.get() == "Left":
+            self.rb_l.config(bg=C_GREEN, fg=C_BG, activebackground="#86efac")
+            self.rb_r.config(bg=C_PANEL, fg="white", activebackground=C_BG)
+        else:
+            self.rb_r.config(bg=C_GREEN, fg=C_BG, activebackground="#86efac")
+            self.rb_l.config(bg=C_PANEL, fg="white", activebackground=C_BG)
 
     def update_gui_loop(self):
         if self.current_frame is not None:
