@@ -47,7 +47,7 @@ F_TITLE = ("Inter", 16, "bold")      # Modern font fallback
 F_HEAD  = ("Inter", 13, "bold")
 F_BODY  = ("Inter", 12)
 F_SMALL = ("Inter", 10)
-F_DATA  = ("Inter", 40, "bold")      # Huge, legible numbers
+F_DATA  = ("Inter", 32, "bold")      # Scaled for perfect fit
 F_MONO  = ("Consolas", 13)
 F_BTN   = ("Inter", 14, "bold")
 
