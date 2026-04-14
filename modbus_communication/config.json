@@ -1,0 +1,13 @@
+{
+  "rpi_id": "UNIT_RPI_01",
+  "plc_ip": "192.168.1.50",
+  "plc_port": 502,
+  "marker_size_top": 53.8,
+  "marker_size_bot": 53.8,
+  "logging_enabled": false,
+  "focus_value": 0,
+  "rot_threshold": 12.0,
+  "pitch_threshold": 12.0,
+  "yaw_threshold": 12.0,
+  "fixed_side": "Left"
+}
