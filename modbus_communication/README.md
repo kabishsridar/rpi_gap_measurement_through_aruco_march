@@ -2,7 +2,13 @@
 
 **Industrial RPi ArUco Gap Measurement System with PLC Integration**
 
-This is the **final, production-ready version** of the gap measurement system. It replaces the Tkinter GUI with a modern web dashboard and adds robust Modbus TCP communication for integration with industrial PLCs.
+This is the **final, production-ready version** of the gap measurement system using position-based ArUco marker naming (**LT1, LT2, LB1, LB2, RT1, RT2, RB1, RB2**). It replaces the Tkinter GUI with a modern web dashboard and adds robust Modbus TCP communication for integration with industrial PLCs.
+
+**New Naming Convention:**
+- **LT1, LT2, LB1, LB2**: Left side markers (Top and Bottom positions)
+- **RT1, RT2, RB1, RB2**: Right side markers (Top and Bottom positions)
+- **L1-L2 pair**: Left side measurement (LT + LB markers)
+- **R1-R2 pair**: Right side measurement (RT + RB markers)
 
 ---
 
@@ -34,7 +40,7 @@ cp modbus_communication/config.json .
 
 # 3. Edit config.json with your settings:
 #    - plc_ip (your PLC address)
-#    - marker_size_top/bot (physical marker size in mm)
+#    - marker_size_LT, marker_size_LB, marker_size_RT, marker_size_RB (physical sizes)
 #    - thresholds for tilt detection
 #    - rpi_id for identification
 
@@ -58,17 +64,18 @@ The system will start:
 - Flask application with modern dark industrial UI
 - Real-time updates via JavaScript fetch
 - Live display of:
-  - Upper and Lower sensor readings (mm)
+  - **L1-L2** (Left side) and **R1-R2** (Right side) gap measurements
   - PLC connection status
   - Error codes and messages
   - Brightness level
-  - Configuration controls
+  - Configuration controls for all 8 marker positions (LT, LB, RT, RB)
 
 #### 2. `gap_engine.py` - Computer Vision Core
-- **Strict port of v16/v17 measurement logic**
+- **Strict port of v16/v17 measurement logic** (being updated for new naming)
 - Uses `picamera2` for high-performance capture
 - ArUco marker detection with `opencv-contrib-python`
-- Dual-pair measurement (Top + Bottom isolation)
+- **Position-based identification**: LT1/LT2, LB1/LB2, RT1/RT2, RB1/RB2
+- Groups into **L1-L2 pair** (Left side) and **R1-R2 pair** (Right side)
 - Intelligent tilt detection and math fallback
 - Updates the shared data dictionary in real-time
 
@@ -87,8 +94,10 @@ The system will start:
   "rpi_id": "UNIT_RPI_01",
   "plc_ip": "192.168.1.50",
   "plc_port": 502,
-  "marker_size_top": 53.8,
-  "marker_size_bot": 53.8,
+  "marker_size_LT": 53.8,
+  "marker_size_LB": 53.8,
+  "marker_size_RT": 53.8,
+  "marker_size_RB": 53.8,
   "logging_enabled": false,
   "focus_value": 0,
   "rot_threshold": 12.0,
@@ -99,7 +108,7 @@ The system will start:
 ```
 
 **Key Parameters:**
-- `marker_size_*`: **Critical** - must match physical marker size in millimeters
+- `marker_size_LT/LB/RT/RB`: **Critical** - must match physical marker sizes for each position
 - `fixed_side`: Choose "Left" or "Right" to select appropriate calibration file
 - `rot/pitch/yaw_threshold`: Degrees that trigger warning states
 - `plc_ip/port`: Target PLC for data transmission
@@ -108,16 +117,16 @@ The system will start:
 
 ## 📡 Modbus Register Map
 
-| Register | Content              | Type    | Description |
-|----------|----------------------|---------|-------------|
-| 0-1      | Top Distance         | Float32 | Upper gap measurement (mm) |
-| 2-3      | Bottom Distance      | Float32 | Lower gap measurement (mm) |
-| 4        | Error Code           | Int16   | 0 = OK, >0 = error condition |
-| 5        | Heartbeat            | Int16   | Incrementing counter |
+| Register | Content                    | Type    | Description |
+|----------|----------------------------|---------|-------------|
+| 0-1      | Left Side Distance (L1-L2) | Float32 | L1-L2 pair gap measurement (mm) |
+| 2-3      | Right Side Distance (R1-R2)| Float32 | R1-R2 pair gap measurement (mm) |
+| 4        | Error Code                 | Int16   | 0 = OK, >0 = error condition |
+| 5        | Heartbeat                  | Int16   | Incrementing counter |
 
 **Error Codes:**
 - `0`: Normal operation
-- `1-10`: Marker detection issues
+- `1-10`: Marker detection issues (LT, LB, RT, RB markers)
 - `11-20`: Tilt/rotation warnings
 - `99`: Camera/hardware errors
 
@@ -125,21 +134,22 @@ The system will start:
 
 ## 🔬 Core Measurement Technology
 
-The `gap_engine.py` implements the mature v16/v17 algorithms:
+The `gap_engine.py` implements the mature v16/v17 algorithms with updated position-based naming:
 
 1. **ArUco Detection**: 4x4_50 dictionary, 1280x720 resolution
 2. **Camera Calibration**: Loads `camera_params.npz` from `../calibration/`
-3. **Dual-Pair Logic**: Top markers only pair with top, bottom with bottom
-4. **3D Reconstruction**: Converts 2D corners to 3D world coordinates
-5. **Geometric Intersection**: Calculates gap using ray-plane mathematics
-6. **Tilt Analysis**: Computes Euler angles for safety monitoring
-7. **Fallback Logic**: Switches mathematical approach for high-rotation cases
+3. **Position-based Identification**: LT1/LT2, LB1/LB2, RT1/RT2, RB1/RB2 markers
+4. **Side-based Pairing**: Groups into **L1-L2 pair** (Left side) and **R1-R2 pair** (Right side)
+5. **3D Reconstruction**: Converts 2D corners to 3D world coordinates
+6. **Geometric Intersection**: Calculates gap using ray-plane mathematics
+7. **Tilt Analysis**: Computes Euler angles for safety monitoring
+8. **Fallback Logic**: Switches mathematical approach for high-rotation cases
 
 **Shared Data Structure:**
 ```python
 shared_data = {
-    "top_dist": 0.0,
-    "bottom_dist": 0.0,  # Note: also accessible as "bot_dist"
+    "left_dist": 0.0,   # L1-L2 pair distance
+    "right_dist": 0.0,  # R1-R2 pair distance
     "error_code": 0,
     "plc_online": False,
     "brightness": 0,

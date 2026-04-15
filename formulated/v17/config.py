@@ -5,13 +5,17 @@ C_BG    = "#0f172a"
 C_PANEL = "#1e293b"
 C_CARD  = "#334155"
 C_ACCENT = "#38bdf8"
-C_TOP    = "#fb923c"
-C_BOT    = "#c084fc"
+C_LEFT   = "#fb923c"  # Orange - Left side (L1-L2 pair: LT1,LT2,LB1,LB2)
+C_RIGHT  = "#c084fc"  # Purple - Right side (R1-R2 pair: RT1,RT2,RB1,RB2)
 C_GREEN  = "#4ade80"
 C_RED    = "#f87171"
 C_AMBER  = "#fbbf24"
 C_TEXT_BRT = "#f8fafc"
 C_TEXT_MED = "#94a3b8"
+
+# Legacy color names maintained for backward compatibility
+C_TOP = C_LEFT   # Top now maps to Left side
+C_BOT = C_RIGHT  # Bottom now maps to Right side
 
 F_TITLE = ("Inter", 16, "bold")
 F_HEAD  = ("Inter", 13, "bold")

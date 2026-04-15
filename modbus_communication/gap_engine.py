@@ -5,6 +5,23 @@ import math
 import os
 from datetime import datetime
 
+"""
+ARUCO MARKER NAMING CONVENTION (Updated):
+
+Position-based naming for 8 markers:
+- LT1, LT2: Left Top markers (Left side, Top position)
+- LB1, LB2: Left Bottom markers (Left side, Bottom position)
+- RT1, RT2: Right Top markers (Right side, Top position)
+- RB1, RB2: Right Bottom markers (Right side, Bottom position)
+
+This enables clear references to:
+- "L1-L2 pair": Left side measurement (LT + LB markers combined)
+- "R1-R2 pair": Right side measurement (RT + RB markers combined)
+
+Legacy variables in code still use "top"/"bottom" for compatibility,
+but semantically now represent Left/Right side measurements.
+"""
+
 # Import constants (Assuming constants.py exists in formulated)
 # We will define missing ones here for the simulation/project to be standalone
 RESOLUTION = (1280, 720)
@@ -12,7 +29,15 @@ ARUCO_DICT = cv.aruco.DICT_4X4_50
 
 def run_gap_engine(shared_data, config):
     """
-    STRICT Port of legacy math engine (v16).
+    STRICT Port of legacy math engine (v16) with updated position-based naming.
+
+    Uses new ArUco marker naming convention:
+    - LT1/LT2, LB1/LB2 (Left side markers)
+    - RT1/RT2, RB1/RB2 (Right side markers)
+
+    Groups into "L1-L2 pair" (Left side) and "R1-R2 pair" (Right side) for clearer
+    semantic meaning than the legacy "Top pair"/"Bottom pair" terminology.
+
     Headless version: No GUI, updates Shared Dictionary instead.
     """
     print("[GAP ENGINE] Initializing Camera...")
@@ -192,8 +217,9 @@ def run_gap_engine(shared_data, config):
                 shared_data["error_code"] = error_flags
                 l_u = curr
         else:
-            shared_data["top_dist"] = 0.0
-            shared_data["bottom_dist"] = 0.0
+            # Map to new semantic naming: top_dist = Left side (L1-L2 pair), bottom_dist = Right side (R1-R2 pair)
+            shared_data["top_dist"] = 0.0    # Left side (L1-L2 pair) distance
+            shared_data["bottom_dist"] = 0.0 # Right side (R1-R2 pair) distance
             shared_data["error_code"] = 1 # No Markers Found
         
         # CPU Throttling

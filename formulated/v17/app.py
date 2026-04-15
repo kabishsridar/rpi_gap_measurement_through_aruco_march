@@ -17,13 +17,22 @@ class MeasurementApp:
         Initialize the application UI and background threads.
         """
         self.root = root
-        self.root.title("Dual-Pair ArUco Measurement v17.1")
+        self.root.title("Position-Based ArUco Measurement v17.1 (LT1,LT2,LB1,LB2,RT1,RT2,RB1,RB2)")
         self.root.geometry("1600x960")
         self.root.configure(bg=C_BG)
 
         # ── Machine Vars ──
-        self.size_top         = tk.DoubleVar(value=DEFAULT_MARKER_SIZE)
-        self.size_bot         = tk.DoubleVar(value=DEFAULT_MARKER_SIZE)
+        # NEW NAMING: Using position-based markers (LT = Left Top, LB = Left Bottom, RT = Right Top, RB = Right Bottom)
+        # This enables "L1-L2 pair" (Left side markers) and "R1-R2 pair" (Right side markers) terminology
+        self.size_LT          = tk.DoubleVar(value=DEFAULT_MARKER_SIZE)  # Left Top markers
+        self.size_LB          = tk.DoubleVar(value=DEFAULT_MARKER_SIZE)  # Left Bottom markers
+        self.size_RT          = tk.DoubleVar(value=DEFAULT_MARKER_SIZE)  # Right Top markers
+        self.size_RB          = tk.DoubleVar(value=DEFAULT_MARKER_SIZE)  # Right Bottom markers
+
+        # Legacy variables maintained for compatibility with existing measurement logic
+        self.size_top         = self.size_LT  # Maps to Left Top
+        self.size_bot         = self.size_LB  # Maps to Left Bottom
+
         self.fixed_side       = tk.StringVar(value="Left")
         self.rot_threshold    = tk.DoubleVar(value=5.0)
         self.pitch_threshold  = tk.DoubleVar(value=6.0)
@@ -46,10 +55,11 @@ class MeasurementApp:
 
         # ── Movement State ──
         self.mv_state         = "idle"
-        self.mv_init_buf      = {"top": [], "bottom": []}
-        self.mv_final_buf     = {"top": [], "bottom": []}
-        self.mv_dist_init     = {"top": None, "bottom": None}
-        self.mv_dist_final    = {"top": None, "bottom": None}
+        # Updated to reflect new side-based naming: "left" = L1-L2 pair, "right" = R1-R2 pair
+        self.mv_init_buf      = {"left": [], "right": []}   # L1-L2 and R1-R2 initialization buffers
+        self.mv_final_buf     = {"left": [], "right": []}   # L1-L2 and R1-R2 final position buffers
+        self.mv_dist_init     = {"left": None, "right": None}
+        self.mv_dist_final    = {"left": None, "right": None}
         self._last_sc         = 0
 
         def _empty():
@@ -62,7 +72,9 @@ class MeasurementApp:
                 "p1_px": None, "p2_px": None, "mean_b": 0,
             }
 
-        self.last_data = {"top": _empty(), "bottom": _empty(), "session_count": 0}
+        # last_data uses "left" and "right" to represent L1-L2 and R1-R2 pairs (semantic update)
+        # The underlying measurement logic still uses some legacy "top"/"bottom" terminology internally
+        self.last_data = {"left": _empty(), "right": _empty(), "session_count": 0}
         self.is_running = True
         self.current_frame = None
 

@@ -1,6 +1,6 @@
 # RPi ArUco Gap Measurement System
 
-**Industrial Precision Gap Measurement using Dual-Pair ArUco Markers with Modbus PLC Integration**
+**Industrial Precision Gap Measurement using Position-Based ArUco Markers (LT1, LT2, LB1, LB2, RT1, RT2, RB1, RB2) with Modbus PLC Integration**
 
 A high-precision 3D measurement system designed for Raspberry Pi that uses two pairs of ArUco markers (Top and Bottom) to calculate gap distances with sub-millimeter accuracy. The final production version integrates with industrial PLCs via Modbus TCP.
 
@@ -23,13 +23,16 @@ A high-precision 3D measurement system designed for Raspberry Pi that uses two p
 
 This system measures the **gap between two objects** using computer vision:
 
-- **Two pairs of ArUco markers** are placed on the objects (one pair on top, one on bottom)
+- **Eight ArUco markers** positioned by location: **LT1, LT2, LB1, LB2** (Left side) and **RT1, RT2, RB1, RB2** (Right side)
+- **L1-L2 pairs** (Left side: LT + LB markers) and **R1-R2 pairs** (Right side: RT + RB markers) enable side-specific gap measurements
 - Uses **stereo-like 3D reconstruction** with a single camera + calibration
 - Calculates the **intersection point** between marker planes using advanced geometric mathematics
 - Provides real-time measurements with tilt detection and safety alerts
 - **Industrial integration** via Modbus TCP to PLC systems
 
 **Key Capabilities:**
+- **Position-based marker naming**: LT1, LT2, LB1, LB2 (Left side), RT1, RT2, RB1, RB2 (Right side)
+- **Side-based pairing**: "L1-L2 pair" (Left side markers) and "R1-R2 pair" (Right side markers) instead of just Top/Bottom
 - Sub-millimeter precision gap measurement
 - Real-time tilt/rotation monitoring (Roll, Pitch, Yaw)
 - Automatic fallback between mathematical methods based on marker orientation
@@ -45,17 +48,19 @@ The project evolved through **17+ iterations**:
 
 ### **v1-v16 (formulated/)**
 - Iterative development of the core computer vision and mathematics
-- Started with basic ArUco detection
-- Progressed to dual-pair measurement with sophisticated 3D geometry
+- Started with basic ArUco detection using simple "Top/Bottom" pairing
+- Progressed to sophisticated 3D geometry with position-based marker identification
 - Added GUI (Tkinter), logging, tilt detection, and camera calibration support
 
 ### **v17 (formulated/v17/)**
 - Final Tkinter GUI version with advanced features
 - Comprehensive configuration, real-time camera controls, movement detection
-- Best for development and testing
+- Still uses legacy "Top/Bottom" terminology in some places
 
 ### **Modbus Communication (Final Production Version)**
 - **Current recommended version**
+- Updated to use new position-based naming: **LT1, LT2, LB1, LB2, RT1, RT2, RB1, RB2**
+- "L1-L2 pair" (Left side) and "R1-R2 pair" (Right side) terminology
 - Flask-based web dashboard (no GUI dependencies)
 - Industrial Modbus TCP integration with PLCs
 - Headless operation optimized for Raspberry Pi deployment
@@ -167,11 +172,11 @@ rpi_gap_measurement_through_aruco_march/
 - Basic logging implementation
 
 **Mid Development (v8-v13):**
-- Dual-pair support (Top + Bottom markers)
+- Dual-pair support with position-based identification (precursor to LT/LB/RT/RB naming)
 - Advanced 3D geometric intersection mathematics
 - Tilt/rotation angle calculation (Euler angles)
 - Improved coordinate system handling
-- Multiple camera calibration support
+- Multiple camera calibration support ("Left" and "Right" fixed side)
 
 **Advanced Features (v14-v16):**
 - Intelligent math fallback (Laser Hit vs Edge-Midpoint methods)
@@ -208,22 +213,23 @@ rpi_gap_measurement_through_aruco_march/
 ## 🛠️ Technical Details
 
 ### Measurement Method
-The system uses **ray-plane intersection** mathematics:
+The system uses **ray-plane intersection** mathematics with position-based marker identification:
 
-1. Detects 4 ArUco markers (2 top, 2 bottom)
-2. Calculates 3D positions using camera calibration
-3. Determines plane orientations from marker corners
-4. Computes intersection point between opposing marker planes
-5. Applies intelligent fallback for high-rotation scenarios
+1. Detects up to 8 ArUco markers positioned as: **LT1, LT2, LB1, LB2** (Left side) and **RT1, RT2, RB1, RB2** (Right side)
+2. Groups into **L1-L2 pair** (Left side markers) and **R1-R2 pair** (Right side markers)
+3. Calculates 3D positions using camera calibration
+4. Determines plane orientations from marker corners
+5. Computes intersection point between opposing marker planes
+6. Applies intelligent fallback for high-rotation scenarios
 
 ### Modbus Register Mapping
-- **Registers 0-1**: Top distance (Float32)
-- **Registers 2-3**: Bottom distance (Float32)
+- **Registers 0-1**: Left side distance (L1-L2 pair, Float32)
+- **Registers 2-3**: Right side distance (R1-R2 pair, Float32)
 - **Register 4**: Error code
 - **Register 5**: Heartbeat counter
 
 ### Configuration Parameters
-- `marker_size_top/bot`: Physical marker size in mm (critical for accuracy)
+- `marker_size_LT`, `marker_size_LB`, `marker_size_RT`, `marker_size_RB`: Physical marker sizes per position (critical for accuracy)
 - `plc_ip/port`: Target PLC address
 - `rot_threshold`, `pitch_threshold`, `yaw_threshold`: Alert thresholds
 - `fixed_side`: "Left" or "Right" (selects calibration file)
@@ -286,5 +292,7 @@ sudo apt-get install python3-picamera2 python3-tk libatlas-base-dev
 ---
 
 **Built for industrial precision measurement applications.**
+
+**Marker Naming Convention**: LT1/LT2/LB1/LB2 (Left side) and RT1/RT2/RB1/RB2 (Right side) enabling clear "L1-L2 pair" and "R1-R2 pair" references.
 
 *Last updated: April 2026*

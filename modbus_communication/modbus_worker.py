@@ -33,13 +33,16 @@ def run_modbus_client(shared_data, config):
                     shared_data["plc_online"] = True
                     
                     # 3. Pull latest values from Shared Dictionary
-                    top_dist = shared_data.get("top_dist", 0.0)
-                    bot_dist = shared_data.get("bot_dist", 0.0)
+                    # NOTE: With new naming convention:
+                    # - top_dist represents Left side (L1-L2 pair: LT1,LT2,LB1,LB2 markers)
+                    # - bot_dist represents Right side (R1-R2 pair: RT1,RT2,RB1,RB2 markers)
+                    top_dist = shared_data.get("top_dist", 0.0)    # Left side distance (L1-L2)
+                    bot_dist = shared_data.get("bot_dist", 0.0)    # Right side distance (R1-R2)
                     error_code = shared_data.get("error_code", 0)
-                    
+
                     # 4. Prepare Registers
-                    # Adr 0-1: Top (Float32)
-                    # Adr 2-3: Bottom (Float32)
+                    # Adr 0-1: Left side distance (L1-L2 pair, Float32)
+                    # Adr 2-3: Right side distance (R1-R2 pair, Float32)
                     # Adr 4: Error Code (Int)
                     # Adr 5: Heartbeat (Counter)
                     

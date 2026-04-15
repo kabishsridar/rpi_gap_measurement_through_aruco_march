@@ -18,7 +18,7 @@ The project progressed through **17 major versions**, each building upon the les
 - **v8**: Improved coordinate handling and mathematics
 - **v9**: Angle correction and tilt detection (`v9_angle_correction.py`)
 - **v10**: Multi-side detection improvements (`v10_multiside.py`)
-- **Focus**: Supporting two independent marker pairs (Top + Bottom)
+- **Focus**: Supporting two independent marker pairs with position-based identification (foundation for LT/LB/RT/RB naming)
 
 ### Phase 3: Advanced Mathematics & Telemetry (v11-v15)
 - **v11-v13**: Iterative improvements to 3D geometry calculations
@@ -42,10 +42,11 @@ The project progressed through **17 major versions**, each building upon the les
 
 ### Mathematical Evolution
 1. **Basic distance** → **3D coordinate transformation**
-2. **Single pair** → **Dual independent pairs** (Top/Bottom isolation)
-3. **Simple averaging** → **Intelligent buffering + outlier rejection**
-4. **Basic intersection** → **Ray-plane intersection with fallback logic**
-5. **No orientation** → **Full Euler angle calculation** (Roll, Pitch, Yaw)
+2. **Single pair** → **Dual independent pairs** with position-based naming (LT1/LT2, LB1/LB2, RT1/RT2, RB1/RB2)
+3. **"Top/Bottom" pairing** → **"L1-L2" and "R1-R2" side-based pairing**
+4. **Simple averaging** → **Intelligent buffering + outlier rejection**
+5. **Basic intersection** → **Ray-plane intersection with fallback logic**
+6. **No orientation** → **Full Euler angle calculation** (Roll, Pitch, Yaw)
 
 ### Safety & Usability
 - Visual tilt warnings (red boxes, yellow text)
@@ -112,24 +113,28 @@ python v15.py
 
 ## 📊 What Was Learned
 
-1. **Marker size is critical** - Must match physical markers exactly
+1. **Marker size is critical** - Must match physical markers exactly (now per position: LT, LB, RT, RB)
 2. **Camera calibration dramatically improves accuracy**
-3. **Vertical isolation** between top/bottom pairs prevents false matches
-4. **Tilt detection is essential** for operational safety
-5. **Modular architecture** (v17) is much more maintainable than monolithic scripts
-6. **Web interface** (final version) is more suitable for industrial deployment than Tkinter GUI
+3. **Position-based identification** (LT1/LT2, LB1/LB2, RT1/RT2, RB1/RB2) is clearer than simple Top/Bottom
+4. **Side-based pairing** ("L1-L2 pair" and "R1-R2 pair") provides better semantic meaning than "Top pair"
+5. **Tilt detection is essential** for operational safety
+6. **Modular architecture** (v17) is much more maintainable than monolithic scripts
+7. **Web interface** (final version) is more suitable for industrial deployment than Tkinter GUI
 
 ---
 
 ## ⬇️ Final Version
 
-The **production version** has been moved to `../modbus_communication/` with:
+The **production version** has been moved to `../modbus_communication/` and has been updated to use the new position-based naming convention:
+
+- **LT1, LT2, LB1, LB2, RT1, RT2, RB1, RB2** marker identification
+- **"L1-L2 pair"** (Left side) and **"R1-R2 pair"** (Right side) terminology
 - Flask web dashboard (no Tkinter dependency)
 - Modbus TCP integration with industrial PLCs
 - Headless operation optimized for Raspberry Pi
 - Modern web-based control room interface
 
-See the root [`README.md`](../README.md) and [`modbus_communication/README.md`](../modbus_communication/README.md) for details.
+See the root [`README.md`](../README.md) and [`modbus_communication/README.md`](../modbus_communication/README.md) for complete details on the new naming convention.
 
 ---
 

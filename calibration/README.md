@@ -161,6 +161,6 @@ After calibration, you can validate accuracy by:
 
 ---
 
-See the main [`../README.md`](../README.md) for complete project documentation and the [`modbus_communication/README.md`](../modbus_communication/README.md) for running the final version.
+See the main [`../README.md`](../README.md) for complete project documentation including the new **LT1, LT2, LB1, LB2, RT1, RT2, RB1, RB2** marker naming convention, and the [`modbus_communication/README.md`](../modbus_communication/README.md) for running the final version.
 
 **Good calibration = Sub-millimeter measurement accuracy.**
