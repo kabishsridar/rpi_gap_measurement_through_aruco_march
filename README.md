@@ -1,43 +1,290 @@
-# Precision Dual-Pair ArUco Measurement Dashboard
+# RPi ArUco Gap Measurement System
 
-A high-precision 3D measurement system designed for Raspberry Pi. This application uses two pairs of ArUco markers to calculate the gap distance between objects with sub-millimeter accuracy using a localized 3D geometric intersection method.
+**Industrial Precision Gap Measurement using Dual-Pair ArUco Markers with Modbus PLC Integration**
 
-## 🚀 Features
+A high-precision 3D measurement system designed for Raspberry Pi that uses two pairs of ArUco markers (Top and Bottom) to calculate gap distances with sub-millimeter accuracy. The final production version integrates with industrial PLCs via Modbus TCP.
 
-- **Dual-Pair Support**: Simultaneously monitors a "Top Pair" and "Bottom Pair" of markers.
-- **Vertical Isolation**: Advanced coordinate pairing ensures top markers only pair with top markers and bottom markers only pair with bottom markers.
-- **Dynamic Settings**: Real-time adjustment of physical marker sizes for both pairs independently via the GUI.
-- **Intelligent Math Fallback**: 
-  - **Normal Mode**: Uses "Laser Hit" ray-casting intersection for maximum precision.
-  - **High-Rotation Mode**: Automatically switches to edge-midpoint formulas if markers tilt beyond 20° to maintain stability.
-- **Visual Safety Alerts**: Red-box warnings and yellow text appear instantly if marker tilt exceeds 5°, helping operators correct alignment.
-- **Telemetry Logging**: Full 3D coordinate and angle data logging via the built-in `log.py` module.
+---
 
-## 🛠 Prerequisites
+## 📋 Table of Contents
 
-- **Hardware**: Raspberry Pi with a compatible Camera Module.
-- **Calibration**: A `camera_params.npz` file must be present in the root directory for accurate 3D translation. If missing, the app uses generic pinhole model fallback.
+- [Project Overview](#project-overview)
+- [Architecture & Evolution](#architecture--evolution)
+- [Prerequisites](#prerequisites)
+- [Final Version (Recommended)](#final-version-recommended)
+- [Project Structure](#project-structure)
+- [Version History](#version-history)
+- [Technical Details](#technical-details)
+- [Calibration](#calibration)
 
-## 📦 Installation
+---
 
-1. Clone the repository to your Raspberry Pi.
-2. Install the required libraries:
+## 🎯 Project Overview
+
+This system measures the **gap between two objects** using computer vision:
+
+- **Two pairs of ArUco markers** are placed on the objects (one pair on top, one on bottom)
+- Uses **stereo-like 3D reconstruction** with a single camera + calibration
+- Calculates the **intersection point** between marker planes using advanced geometric mathematics
+- Provides real-time measurements with tilt detection and safety alerts
+- **Industrial integration** via Modbus TCP to PLC systems
+
+**Key Capabilities:**
+- Sub-millimeter precision gap measurement
+- Real-time tilt/rotation monitoring (Roll, Pitch, Yaw)
+- Automatic fallback between mathematical methods based on marker orientation
+- Comprehensive logging (CSV + SQLite)
+- Web-based industrial dashboard
+- PLC communication (Modbus TCP)
+
+---
+
+## 🏗️ Architecture & Evolution
+
+The project evolved through **17+ iterations**:
+
+### **v1-v16 (formulated/)**
+- Iterative development of the core computer vision and mathematics
+- Started with basic ArUco detection
+- Progressed to dual-pair measurement with sophisticated 3D geometry
+- Added GUI (Tkinter), logging, tilt detection, and camera calibration support
+
+### **v17 (formulated/v17/)**
+- Final Tkinter GUI version with advanced features
+- Comprehensive configuration, real-time camera controls, movement detection
+- Best for development and testing
+
+### **Modbus Communication (Final Production Version)**
+- **Current recommended version**
+- Flask-based web dashboard (no GUI dependencies)
+- Industrial Modbus TCP integration with PLCs
+- Headless operation optimized for Raspberry Pi deployment
+- Real-time web interface accessible from control room PCs
+
+---
+
+## 🛠️ Prerequisites
+
+**Virtual Environment (Required for ALL versions):**
+
+1. **Create virtual environment** (run once):
    ```bash
-   pip install -r requirements.txt
+   python -m venv venv
    ```
-   *Note: On Raspberry Pi, you may also need `sudo apt-get install python3-tk` for the GUI.*
 
-## 🚦 How to Use
+2. **Always activate before running any commands:**
+   - **Windows**: `venv\Scripts\activate`
+   - **Raspberry Pi / Linux**: `source venv/bin/activate`
 
-1. Run the dashboard:
+3. **Install system dependencies** (Raspberry Pi):
    ```bash
-   python v9_angle_correction.py
+   sudo apt-get update
+   sudo apt-get install python3-picamera2 python3-tk libatlas-base-dev
    ```
-2. **Settings Tab**: Go to the "Configuration" tab to set the exact physical size (mm) of your ArUco markers.
-3. **Live Monitor**: Watch the video feed. Measurement lines will appear in **Orange (Top)** and **Purple (Bottom)**.
-4. **Telemetry**: Switch to the "Dual Telemetry" tab to view raw 3D positions, roll, and tilt for all four markers simultaneously.
 
-## 📐 The Formula
+**Hardware Requirements:**
+- Raspberry Pi with Camera Module
+- Compatible ArUco markers (physical size must match configuration)
+- Chessboard pattern for camera calibration (10x7 corners, 15mm squares)
 
-The system solves for the intersection factor **k** between a directional ray from the source marker and the target edge of the secondary marker:
-`k = [(v·w)(u·v) - (v·v)(u·w)] / [(v·v)(w·w) - (v·w)²]`
+---
+
+
+## 🚀 Final Version (Recommended)
+
+**⚠️ Important**: Make sure you have followed the [Prerequisites](#prerequisites) section above (virtual environment setup and system dependencies).
+
+### Quick Start - Modbus Communication Version
+
+```bash
+# 1. Make sure your virtual environment is activated:
+#    Windows: venv\Scripts\activate
+#    Raspberry Pi/Linux: source venv/bin/activate
+
+# 2. Configure the system (first time only)
+cp modbus_communication/config.json .
+# Edit config.json with your PLC IP, marker sizes, thresholds, etc.
+
+# 3. Run the final Modbus version
+cd modbus_communication
+python app.py
+```
+
+The application will start a web server (default: http://localhost:5000) and two background threads:
+- **Gap Engine**: Computer vision measurement using ArUco markers
+- **Modbus Worker**: Communicates measurements to PLC via Modbus TCP
+
+---
+
+## 📁 Project Structure
+
+```
+rpi_gap_measurement_through_aruco_march/
+├── README.md                          # This file - Main documentation
+├── requirements.txt                   # Python dependencies
+├── .gitignore
+│
+├── modbus_communication/              # FINAL PRODUCTION VERSION (Recommended)
+│   ├── app.py                         # Main Flask web application
+│   ├── gap_engine.py                  # Core computer vision & measurement logic
+│   ├── modbus_worker.py               # PLC communication via Modbus TCP
+│   ├── simulation_app.py              # Simulation/testing dashboard
+│   ├── config.json                    # Configuration (PLC IP, marker sizes, etc.)
+│   └── idea.excalidraw                # System architecture diagram
+│
+├── formulated/                        # Development versions (v1-v17)
+│   ├── v17/                           # Latest Tkinter GUI version
+│   ├── v1.py - v16.py                 # Historical iterations
+│   ├── constants.py                   # Shared constants and styling
+│   ├── measurement_logic.py           # Core measurement algorithms
+│   ├── log.py                         # CSV + SQLite logging
+│   ├── main.py                        # Entry point for v17
+│   ├── app.py, logic.py, etc.         # v17 modular components
+│   ├── gap_measurements.csv           # Historical measurement data
+│   └── *.excalidraw                   # Block diagrams
+│
+├── calibration/                       # Camera calibration tools
+│   ├── calibrate.py                   # Chessboard calibration script
+│   ├── capture_images.py              # Image capture utility
+│   └── camera_params*.npz             # Calibration matrices (generated)
+│
+├── dist_btw_2_pairs_of_aruco/         # Early dual-pair experiments
+│   └── v1.py, v2.py, v3_two_corners.py
+│
+└── calibration/camera_params*.npz     # Camera calibration files
+```
+
+---
+
+## 📊 Version History & Changes
+
+### Major Milestones:
+
+**Early Development (v1-v7):**
+- Basic ArUco marker detection
+- Single pair distance measurement
+- Initial GUI development
+- Basic logging implementation
+
+**Mid Development (v8-v13):**
+- Dual-pair support (Top + Bottom markers)
+- Advanced 3D geometric intersection mathematics
+- Tilt/rotation angle calculation (Euler angles)
+- Improved coordinate system handling
+- Multiple camera calibration support
+
+**Advanced Features (v14-v16):**
+- Intelligent math fallback (Laser Hit vs Edge-Midpoint methods)
+- Real-time tilt safety alerts (visual + color coding)
+- Comprehensive telemetry dashboard
+- Movement detection algorithms
+- Performance optimizations and buffering
+
+**v17 (GUI Version):**
+- Complete modular architecture (app, logic, gui_widgets, utils, camera)
+- Advanced camera controls (exposure, gain, white balance, etc.)
+- Real-time movement state detection
+- Enhanced configuration system
+- Professional control-room aesthetic
+
+**Final Modbus Version (Current):**
+- **Headless web dashboard** (Flask + modern dark UI)
+- **Industrial integration** via Modbus TCP to PLC
+- Real-time web interface for control systems
+- Shared state architecture between threads
+- Production-ready error handling and reconnection logic
+- **Removes Tkinter dependency** for better Raspberry Pi deployment
+
+**Key Technical Improvements in Final Version:**
+- Separation of concerns (gap_engine, modbus_worker, web app)
+- Robust thread-safe shared data model
+- Automatic PLC reconnection with heartbeat
+- Configurable thresholds for rotation, pitch, yaw
+- Support for both "Left" and "Right" fixed camera calibration
+- Modern web-based UI accessible from any device on the network
+
+---
+
+## 🛠️ Technical Details
+
+### Measurement Method
+The system uses **ray-plane intersection** mathematics:
+
+1. Detects 4 ArUco markers (2 top, 2 bottom)
+2. Calculates 3D positions using camera calibration
+3. Determines plane orientations from marker corners
+4. Computes intersection point between opposing marker planes
+5. Applies intelligent fallback for high-rotation scenarios
+
+### Modbus Register Mapping
+- **Registers 0-1**: Top distance (Float32)
+- **Registers 2-3**: Bottom distance (Float32)
+- **Register 4**: Error code
+- **Register 5**: Heartbeat counter
+
+### Configuration Parameters
+- `marker_size_top/bot`: Physical marker size in mm (critical for accuracy)
+- `plc_ip/port`: Target PLC address
+- `rot_threshold`, `pitch_threshold`, `yaw_threshold`: Alert thresholds
+- `fixed_side`: "Left" or "Right" (selects calibration file)
+- `rpi_id`: Unique identifier for the measurement node
+
+---
+
+## 📸 Calibration
+
+**Critical for accuracy** - see [`calibration/README.md`](calibration/README.md) for detailed instructions.
+
+1. Print a chessboard pattern
+2. Capture 15+ images from different angles using `capture_images.py`
+3. Run `calibrate.py` to generate `camera_params.npz`
+4. Place calibration files in the root or calibration/ directory
+
+**Note**: The system falls back to a generic pinhole model if calibration files are missing, but accuracy will be reduced.
+
+---
+
+## 📋 Requirements
+
+**All commands must be run with the virtual environment activated** (see [Prerequisites](#prerequisites) section).
+
+See [`requirements.txt`](requirements.txt):
+- `numpy`, `opencv-contrib-python`, `Pillow`, `picamera2`
+- `flask` (for Modbus version)
+- `pyModbusTCP` (for PLC communication)
+
+**Raspberry Pi specific system packages:**
+```bash
+sudo apt-get install python3-picamera2 python3-tk libatlas-base-dev
+```
+
+---
+
+## 🔧 Troubleshooting
+
+**Common Issues:**
+- **"Command not found" or missing modules**: Ensure virtual environment is activated (`venv\Scripts\activate` on Windows, `source venv/bin/activate` on Raspberry Pi)
+- **Camera not detected**: Ensure `picamera2` is properly installed and enabled
+- **Poor accuracy**: Verify marker size configuration and camera calibration
+- **PLC connection failures**: Check IP address, port, and network connectivity
+- **High CPU usage**: Adjust frame rate or resolution in the gap engine
+
+**Logs:**
+- Web console output
+- `gap_measurements.csv` and `gap_measurements.db` in formulated/
+- SQLite database for historical measurements
+
+---
+
+## 📄 Additional Documentation
+
+- [`modbus_communication/README.md`](modbus_communication/README.md) - Final version details
+- [`formulated/README.md`](formulated/README.md) - Development history
+- [`calibration/README.md`](calibration/README.md) - Camera calibration guide
+- `modbus_communication/idea.excalidraw` - System architecture diagram
+
+---
+
+**Built for industrial precision measurement applications.**
+
+*Last updated: April 2026*
